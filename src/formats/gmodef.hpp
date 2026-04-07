@@ -7,6 +7,12 @@ namespace gmo {
 #define SCEGMO_FORMAT_VERSION (0x312e3030)   /* '1.00' */
 #define SCEGMO_FORMAT_STYLE_PSP (0x00505350) /* 'PSP'  */
 
+enum GmoModelFlags {
+    SCEGMO_MODEL_HAS_BOUNDING_BOX = 0x0001,
+    SCEGMO_MODEL_HAS_VERTEX_OFFSET = 0x0002,
+    SCEGMO_MODEL_HAS_TEXCOORD_OFFSET = 0x0004
+};
+
 enum GmoBlockFlags : uint32_t {
     SCEGMO_BASE_RESERVED = 0x0000, /* 0000-0fff : reserved */
     SCEGMO_BASE_PRIVATE = 0x1000,  /* 1000-3fff : private use */
@@ -221,5 +227,49 @@ enum GmoBoneAnimFlags : uint32_t {
     SCEGMO_BONE_ANIM_MODIFIED = 0x0000ffff,
     SCEGMO_BONE_ANIM_COMPLETE = 0xffff0000,
 };
+
+// clang-format off
+#define SCEGU_TEXTURE_NONE       ( 0 <<  0 )
+#define SCEGU_TEXTURE_UBYTE      ( 1 <<  0 )
+#define SCEGU_TEXTURE_USHORT     ( 2 <<  0 )
+#define SCEGU_TEXTURE_FLOAT      ( 3 <<  0 )
+#define SCEGU_COLOR_NONE         ( 0 <<  2 )
+#define SCEGU_COLOR_PF5650       ( 4 <<  2 )
+#define SCEGU_COLOR_PF5551       ( 5 <<  2 )
+#define SCEGU_COLOR_PF4444       ( 6 <<  2 )
+#define SCEGU_COLOR_PF8888       ( 7 <<  2 )
+#define SCEGU_NORMAL_NONE        ( 0 <<  5 )
+#define SCEGU_NORMAL_BYTE        ( 1 <<  5 )
+#define SCEGU_NORMAL_SHORT       ( 2 <<  5 )
+#define SCEGU_NORMAL_FLOAT       ( 3 <<  5 )
+#define SCEGU_VERTEX_NONE        ( 0 <<  7 )
+#define SCEGU_VERTEX_BYTE        ( 1 <<  7 )
+#define SCEGU_VERTEX_SHORT       ( 2 <<  7 )
+#define SCEGU_VERTEX_FLOAT       ( 3 <<  7 )
+#define SCEGU_WEIGHT_NONE        ( 0 <<  9 )
+#define SCEGU_WEIGHT_UBYTE       ( 1 <<  9 )
+#define SCEGU_WEIGHT_USHORT      ( 2 <<  9 )
+#define SCEGU_WEIGHT_FLOAT       ( 3 <<  9 )
+#define SCEGU_INDEX_NONE         ( 0 << 11 )
+#define SCEGU_INDEX_UBYTE        ( 1 << 11 )
+#define SCEGU_INDEX_USHORT       ( 2 << 11 )
+#define SCEGU_WEIGHT_1           ( 0 << 14 )
+#define SCEGU_WEIGHT_2           ( 1 << 14 )
+#define SCEGU_WEIGHT_3           ( 2 << 14 )
+#define SCEGU_WEIGHT_4           ( 3 << 14 )
+#define SCEGU_WEIGHT_5           ( 4 << 14 )
+#define SCEGU_WEIGHT_6           ( 5 << 14 )
+#define SCEGU_WEIGHT_7           ( 6 << 14 )
+#define SCEGU_WEIGHT_8           ( 7 << 14 )
+#define SCEGU_VERTEX_1           ( 0 << 18 )
+#define SCEGU_VERTEX_2           ( 1 << 18 )
+#define SCEGU_VERTEX_3           ( 2 << 18 )
+#define SCEGU_VERTEX_4           ( 3 << 18 )
+#define SCEGU_VERTEX_5           ( 4 << 18 )
+#define SCEGU_VERTEX_6           ( 5 << 18 )
+#define SCEGU_VERTEX_7           ( 6 << 18 )
+#define SCEGU_VERTEX_8           ( 7 << 18 )
+#define SCEGU_THROUGH            ( 1 << 23 )
+// clang-format on
 
 } // namespace gmo
