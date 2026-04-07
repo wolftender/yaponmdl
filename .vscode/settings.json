@@ -1,0 +1,9 @@
+{
+    "editor.formatOnSave": true,
+    "editor.inlayHints.enabled": "offUnlessPressed",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/out/build/clang-x64-debug",
+        "--completion-style=detailed",
+        "--header-insertion=never"
+    ]
+}
