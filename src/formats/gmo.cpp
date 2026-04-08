@@ -572,6 +572,8 @@ private:
         const auto num_draw_parts = CountChildrenOfType(bone_chunk, SCEGMO_DRAW_PART);
 
         GmoBone bone;
+        bone.name = bone_chunk.name;
+
         bone.draw_parts.reserve(num_draw_parts);
 
         auto current_id = bone_chunk.child_id;
@@ -770,6 +772,8 @@ private:
         }
 
         GmoVertexArray array;
+        array.name = array_chunk.name;
+
         AssertSeek(reader, GetChunkArgsOffset(array_chunk));
 
         const auto native_format = AssertRead<uint32_t>(reader);
@@ -952,6 +956,7 @@ private:
         }
 
         GmoMesh mesh;
+        mesh.name = mesh_chunk.name;
 
         auto current_id = mesh_chunk.child_id;
         while (current_id.has_value()) {
@@ -1018,7 +1023,7 @@ private:
                 const auto native_num_verts = AssertRead<uint32_t>(reader);
                 const auto native_num_prims = AssertRead<uint32_t>(reader);
 
-                draw.array_id = native_arrays;
+                draw.array_id = RefIndex(native_arrays);
                 draw.num_vertices = native_num_verts;
                 draw.num_primitives = native_num_prims;
 
@@ -1089,6 +1094,7 @@ private:
         }
 
         GmoPart part;
+        part.name = part_chunk.name;
 
         auto current_id = part_chunk.child_id;
         while (current_id.has_value()) {
@@ -1133,6 +1139,7 @@ private:
         }
 
         GmoMaterialLayer layer;
+        layer.name = layer_chunk.name;
 
         auto current_id = layer_chunk.child_id;
         while (current_id.has_value()) {
@@ -1142,7 +1149,7 @@ private:
             switch (type) {
             case SCEGMO_SET_TEXTURE:
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                layer.texture_id = AssertRead<uint32_t>(reader);
+                layer.texture_id = RefIndex(AssertRead<uint32_t>(reader));
                 break;
 
             case SCEGMO_MAP_TYPE: {
@@ -1248,6 +1255,7 @@ private:
         }
 
         GmoMaterial material;
+        material.name = material_chunk.name;
 
         auto current_id = material_chunk.child_id;
         while (current_id.has_value()) {
@@ -1393,6 +1401,8 @@ private:
         }
 
         GmoTexture texture;
+        texture.name = texture_chunk.name;
+
         auto current_id = texture_chunk.child_id;
         while (current_id.has_value()) {
             const auto &chunk = map_[current_id.value()];
@@ -1430,6 +1440,7 @@ private:
             }
 
             default:
+                GMO_DEBUG_PRINT("skipping chunk type for texture: {}", type);
                 break;
             }
 
@@ -1437,6 +1448,182 @@ private:
         }
 
         return texture;
+    }
+
+    auto LoadFCurve(const GmoChunk &fcurve_chunk) const -> GmoFCurve {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(fcurve_chunk) != SCEGMO_FCURVE) {
+            throw GmoParseError{"cannot load fcurve from non-fcurve chunk"};
+        }
+
+        GmoFCurve fcurve;
+        fcurve.name = fcurve_chunk.name;
+
+        AssertSeek(reader, GetChunkArgsOffset(fcurve_chunk));
+        uint32_t native_format = AssertRead<uint32_t>(reader);
+        uint32_t native_num_dims = AssertRead<uint32_t>(reader);
+        uint32_t native_num_keys = AssertRead<uint32_t>(reader);
+
+        (void)AssertRead<uint32_t>(reader); // unused
+
+        return fcurve;
+    }
+
+    auto LoadMotion(const GmoChunk &motion_chunk) const -> GmoMotion {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(motion_chunk) != SCEGMO_MOTION) {
+            throw GmoParseError{"cannot load motion from non-motion chunk"};
+        }
+
+        GmoMotion motion;
+        motion.name = motion_chunk.name;
+
+        auto current_id = motion_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_FRAME_RATE:
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                motion.framerate = AssertRead<float>(reader);
+                break;
+
+            case SCEGMO_FRAME_LOOP:
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                motion.frame_loop_start = AssertRead<float>(reader);
+                motion.frame_loop_end = AssertRead<float>(reader);
+                break;
+
+            case SCEGMO_FCURVE:
+                motion.fcurves.emplace_back(LoadFCurve(chunk));
+                break;
+
+            case SCEGMO_ANIMATE: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto native_block = AssertRead<uint32_t>(reader);
+                const auto native_cmd = AssertRead<uint32_t>(reader);
+                const auto native_index = AssertRead<uint32_t>(reader);
+                const auto native_fcurve = AssertRead<uint32_t>(reader);
+
+                GmoAnimation anim;
+
+                anim.fcurve_id = RefIndex(native_fcurve);
+                anim.index = native_index;
+
+                const auto ref_type = RefType(native_block);
+                switch (ref_type) {
+                case SCEGMO_BONE:
+                    anim.target = GmoAnimationTarget::eBone;
+                    break;
+
+                case SCEGMO_MATERIAL:
+                    anim.target = GmoAnimationTarget::eMaterial;
+                    break;
+
+                default:
+                    GMO_DEBUG_PRINT("invalid animate target type {}", ref_type);
+                    break;
+                }
+
+                switch (native_cmd) {
+                case SCEGMO_TRANSLATE:
+                    anim.property = eAnimBoneTranslate;
+                    break;
+
+                case SCEGMO_ROTATE_Q:
+                    anim.property = eAnimBoneRotateQ;
+                    break;
+
+                case SCEGMO_ROTATE_ZYX:
+                    anim.property = eAnimBoneRotateZYX;
+                    break;
+
+                case SCEGMO_ROTATE_YXZ:
+                    anim.property = eAnimBoneRotateYXZ;
+                    break;
+
+                case SCEGMO_SCALE:
+                    anim.property = eAnimBoneScale1;
+                    break;
+
+                case SCEGMO_SCALE_2:
+                    anim.property = eAnimBoneScale2;
+                    break;
+
+                case SCEGMO_SCALE_3:
+                    anim.property = eAnimBoneScale3;
+                    break;
+
+                case SCEGMO_MULT_MATRIX:
+                    anim.property = eAnimBoneMultMatrix;
+                    break;
+
+                case SCEGMO_MORPH_WEIGHTS:
+                    anim.property = eAnimBoneMorphWeights;
+                    break;
+
+                case SCEGMO_MORPH_INDEX:
+                    anim.property = eAnimBoneMorphIndex;
+                    break;
+
+                case SCEGMO_VISIBILITY:
+                    anim.property = eAnimBoneVisibility;
+                    break;
+
+                case SCEGMO_DIFFUSE:
+                    anim.property = eAnimMaterialDiffuse;
+                    break;
+
+                case SCEGMO_SPECULAR:
+                    anim.property = eAnimMaterialSpecular;
+                    break;
+
+                case SCEGMO_EMISSION:
+                    anim.property = eAnimMaterialEmission;
+                    break;
+
+                case SCEGMO_AMBIENT:
+                    anim.property = eAnimMaterialAmbient;
+                    break;
+
+                case SCEGMO_REFLECTION:
+                    anim.property = eAnimMaterialReflection;
+                    break;
+
+                case SCEGMO_REFRACTION:
+                    anim.property = eAnimMaterialRefraction;
+                    break;
+
+                case SCEGMO_BUMP:
+                    anim.property = eAnimMaterialBump;
+                    break;
+
+                case SCEGMO_TEX_CROP:
+                    anim.property = eAnimMaterialTextureCrop;
+                    break;
+
+                default:
+                    anim.property = static_cast<GmoAnimationProperty>(native_cmd);
+                    GMO_DEBUG_PRINT("using custom property for animation {}", native_cmd);
+                    break;
+                }
+
+                motion.animations.emplace_back(anim);
+                break;
+            }
+
+            default:
+                GMO_DEBUG_PRINT("skipping chunk type for motion: {}", type);
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return motion;
     }
 
     auto LoadModel(const GmoChunk &model_chunk) const -> GmoModel {
@@ -1458,6 +1645,8 @@ private:
             num_bone_chunks, num_part_chunks, num_material_chunks, num_texture_chunks, num_motion_chunks);
 
         GmoModel model;
+        model.name = model_chunk.name;
+
         model.bones.reserve(num_bone_chunks);
         model.parts.reserve(num_part_chunks);
         model.materials.reserve(num_material_chunks);
@@ -1487,6 +1676,7 @@ private:
                 break;
 
             case SCEGMO_MOTION:
+                model.motions.emplace_back(LoadMotion(chunk));
                 break;
 
             case SCEGMO_BOUNDING_BOX:

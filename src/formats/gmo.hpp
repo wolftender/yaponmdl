@@ -74,6 +74,7 @@ enum class GmoBoneFlags : GmoFlags {
 
 struct GmoBone {
     GmoBoneFlags flags = GmoBoneFlags::eBoneNone;
+    std::string name;
 
     std::vector<uint32_t> draw_parts;
     std::vector<float> morph_weights;
@@ -113,8 +114,9 @@ enum class GmoVertexArrayFlags : GmoFlags {
 
 struct GmoVertexArray {
     GmoVertexArrayFlags flags = GmoVertexArrayFlags::eNone;
-    uint8_t num_weights = 0;
+    std::string name;
 
+    uint8_t num_weights = 0;
     std::vector<GmoVertex> vertices;
 };
 
@@ -137,12 +139,15 @@ struct GmoDrawArray {
 };
 
 struct GmoMesh {
+    std::string name;
     uint32_t material;
     std::vector<uint32_t> blend_subset;
     std::vector<GmoDrawArray> draw_arrays;
 };
 
 struct GmoPart {
+    std::string name;
+
     glm::fvec3 bounding_min = {0.0f, 0.0f, 0.0f};
     glm::fvec3 bounding_max = {0.0f, 0.0f, 0.0f};
 
@@ -192,6 +197,8 @@ enum class GmoBlendFunction {
 };
 
 struct GmoMaterialLayer {
+    std::string name;
+
     GmoMaterialLayerFlags flags = GmoMaterialLayerFlags::eNone;
     GmoMaterialLayerMapType map_type = GmoMaterialLayerMapType::eNone;
 
@@ -240,6 +247,8 @@ enum class GmoMaterialFlags : GmoFlags {
 
 struct GmoMaterial {
     GmoMaterialFlags flags = GmoMaterialFlags::eNone;
+    std::string name;
+
     std::vector<GmoMaterialLayer> layers;
 
     // clang-format off
@@ -259,11 +268,61 @@ struct GmoMaterial {
 };
 
 struct GmoTexture {
+    std::string name;
     std::string filename;
     std::vector<uint8_t> data;
 };
 
-struct GmoMotion {};
+enum class GmoAnimationTarget {
+    eBone,
+    eMaterial,
+};
+
+enum GmoAnimationProperty {
+    eAnimBoneTranslate,
+    eAnimBoneRotateQ,
+    eAnimBoneRotateZYX,
+    eAnimBoneRotateYXZ,
+    eAnimBoneScale1,
+    eAnimBoneScale2,
+    eAnimBoneScale3,
+    eAnimBoneMultMatrix,
+    eAnimBoneMorphWeights,
+    eAnimBoneMorphIndex,
+    eAnimBoneVisibility,
+    eAnimMaterialDiffuse,
+    eAnimMaterialSpecular,
+    eAnimMaterialEmission,
+    eAnimMaterialAmbient,
+    eAnimMaterialReflection,
+    eAnimMaterialRefraction,
+    eAnimMaterialBump,
+    eAnimMaterialTextureCrop,
+};
+
+struct GmoAnimation {
+    std::string name;
+    uint32_t fcurve_id;
+    GmoAnimationTarget target;
+    GmoAnimationProperty property;
+    uint32_t index;
+};
+
+struct GmoFCurve {
+    std::string name;
+};
+
+struct GmoMotion {
+    std::string name;
+
+    std::vector<GmoAnimation> animations;
+    std::vector<GmoFCurve> fcurves;
+
+    float frame_loop_start;
+    float frame_loop_end;
+
+    float framerate;
+};
 
 // clang-format off
 enum class GmoModelFlags : GmoFlags {
@@ -276,6 +335,7 @@ enum class GmoModelFlags : GmoFlags {
 
 struct GmoModel {
     GmoModelFlags flags = GmoModelFlags::eModelNone;
+    std::string name;
 
     std::vector<GmoBone> bones;
     std::vector<GmoPart> parts;
