@@ -3,15 +3,91 @@
 
 namespace gmo {
 
-#define SCEGMO_FORMAT_SIGNATURE (0x2e474d4f) /* '.GMO' */
-#define SCEGMO_FORMAT_VERSION (0x312e3030)   /* '1.00' */
-#define SCEGMO_FORMAT_STYLE_PSP (0x00505350) /* 'PSP'  */
+static constexpr uint32_t kSceGmoFormatSignature = 0x2e474d4f; // '.GMO'
+static constexpr uint32_t kSceGmoFormatVersion = 0x312e3030;   // '1.00'
+static constexpr uint32_t kSceGmoFormatPsp = 0x00505350;       // 'PSP'
 
-enum GmoModelFlags {
-    SCEGMO_MODEL_HAS_BOUNDING_BOX = 0x0001,
-    SCEGMO_MODEL_HAS_VERTEX_OFFSET = 0x0002,
-    SCEGMO_MODEL_HAS_TEXCOORD_OFFSET = 0x0004
+// clang-format off
+enum class GmoChunkTypes : uint32_t {
+    // Top level
+    eSceGmoHalfChunk        = 0x8000,
+    eSceGmoBlock            = 0x0001,
+    eSceGmoFile             = 0x0002,
+    eSceGmoModel            = 0x0003,
+    eSceGmoBone             = 0x0004,
+    eSceGmoPart             = 0x0005,
+    eSceGmoMesh             = 0x0006,
+    eSceGmoArrays           = 0x0007,
+    eSceGmoMaterial         = 0x0008,
+    eSceGmoLayer            = 0x0009,
+    eSceGmoTexture          = 0x000a,
+    eSceGmoMotion           = 0x000b,
+    eSceGmoFCurve           = 0x000c,
+    eSceGmoBlindBlock       = 0x000f,
+
+    // commands
+    eSceGmoCommand          = 0x0011,
+    eSceGmoFileName         = 0x0012,
+    eSceGmoFileImage        = 0x0013,
+    eSceGmoBoundingBox      = 0x0014,
+    eSceGmoVertexOffset     = 0x0015,
+
+    // SceGmoBone
+    eSceGmoParentBone       = 0x0041,
+    eSceGmoVisibility       = 0x0042,
+    eSceGmoMorphWeights     = 0x0043,
+    eSceGmoMorphIndex       = 0x004f,
+    eSceGmoBlendBones       = 0x0044,
+    eSceGmoBlendOffsets     = 0x0045,
+    eSceGmoPivot            = 0x0046,
+    eSceGmoMultMatrix       = 0x0047,
+    eSceGmoTranslate        = 0x0048,
+    eSceGmoRotateZYX        = 0x0049,
+    eSceGmoRotateXYZ        = 0x004a,
+    eSceGmoRotateQuat       = 0x004b,
+    eSceGmoScale1           = 0x004c,
+    eSceGmoScale2           = 0x004d,
+    eSceGmoScale3           = 0x00e1,
+    eSceGmoDrawPart         = 0x004e,
+
+    eSceGmoSetMateiral      = 0x0061,
+    eSceGmoBlendSubset      = 0x0062,
+    eSceGmoSubdivision      = 0x0063,
+    eSceGmoKnotVectorU      = 0x0064,
+    eSceGmoKnotVectorV      = 0x0065,
+    eSceGmoDrawArrays       = 0x0066,
+    eSceGmoDrawParticle     = 0x0067,
+    eSceGmoDrawBspline      = 0x0068,
+    eSceGmoDrawRectMesh     = 0x0069,
+    eSceGmoDrawRectPatch    = 0x006a,
+
+    eSceGmoRenderState      = 0x0081,
+    eSceGmoDiffuse          = 0x0082,
+    eSceGmoSpecular         = 0x0083,
+    eSceGmoEmission         = 0x0084,
+    eSceGmoAmbient          = 0x0085,
+    eSceGmoReflection       = 0x0086,
+    eSceGmoRefraction       = 0x0087,
+    eSceGmoBump             = 0x0088,
+
+    eSceGmoSetTexture       = 0x0091,
+    eSceGmoMapType          = 0x0092,
+    eSceGmoMapFactor        = 0x0093,
+    eSceGmoBlendFunc        = 0x0094,
+    eSceGmoTexFunc          = 0x0095,
+    eSceGmoTexFilter        = 0x0096,
+    eSceGmoTexWrap          = 0x0097,
+    eSceGmoTexCrop          = 0x0098,
+
+    eSceGmoFrameLoop        = 0x00b1,
+    eSceGmoFrameRate        = 0x00b2,
+    eSceGmoFrameRepeat      = 0x00b4,
+    eSceGmoAnimate          = 0x00b3,
+
+    eSceGmoBlindData        = 0x00f1,
+    eSceGmoFileInfo         = 0x00ff,
 };
+// clang-format on
 
 enum GmoBlockFlags : uint32_t {
     SCEGMO_BASE_RESERVED = 0x0000, /* 0000-0fff : reserved */
@@ -207,52 +283,43 @@ enum GmoWrapFlags : uint32_t {
     SCEGMO_WRAP_CLAMP = 1,
 };
 
-enum GmoBoneFlags : uint32_t {
-    SCEGMO_BONE_IS_SCALE_STACKED = 0x80000000,
-    SCEGMO_BONE_IS_LOCAL_DIRTY = 0x40000000,
-    SCEGMO_BONE_IS_WORLD_DIRTY = 0x20000000,
-
-    SCEGMO_BONE_HAS_TRANSLATE = 0x0001,
-    SCEGMO_BONE_HAS_ROTATE = 0x0002,
-    SCEGMO_BONE_HAS_SCALE = 0x0004,
-    SCEGMO_BONE_HAS_SCALE_2 = 0x0008,
-    SCEGMO_BONE_HAS_SCALE_3 = 0x0010,
-    SCEGMO_BONE_HAS_MULT_MATRIX = 0x0040,
-    SCEGMO_BONE_HAS_PIVOT = 0x0080,
-    SCEGMO_BONE_HAS_MORPH_WEIGHTS = 0x0100,
-    SCEGMO_BONE_HAS_VISIBILITY = 0x0200,
-};
-
 enum GmoBoneAnimFlags : uint32_t {
     SCEGMO_BONE_ANIM_MODIFIED = 0x0000ffff,
     SCEGMO_BONE_ANIM_COMPLETE = 0xffff0000,
 };
 
 // clang-format off
+// from libgu.h
 #define SCEGU_TEXTURE_NONE       ( 0 <<  0 )
 #define SCEGU_TEXTURE_UBYTE      ( 1 <<  0 )
 #define SCEGU_TEXTURE_USHORT     ( 2 <<  0 )
 #define SCEGU_TEXTURE_FLOAT      ( 3 <<  0 )
+
 #define SCEGU_COLOR_NONE         ( 0 <<  2 )
 #define SCEGU_COLOR_PF5650       ( 4 <<  2 )
 #define SCEGU_COLOR_PF5551       ( 5 <<  2 )
 #define SCEGU_COLOR_PF4444       ( 6 <<  2 )
 #define SCEGU_COLOR_PF8888       ( 7 <<  2 )
+
 #define SCEGU_NORMAL_NONE        ( 0 <<  5 )
 #define SCEGU_NORMAL_BYTE        ( 1 <<  5 )
 #define SCEGU_NORMAL_SHORT       ( 2 <<  5 )
 #define SCEGU_NORMAL_FLOAT       ( 3 <<  5 )
+
 #define SCEGU_VERTEX_NONE        ( 0 <<  7 )
 #define SCEGU_VERTEX_BYTE        ( 1 <<  7 )
 #define SCEGU_VERTEX_SHORT       ( 2 <<  7 )
 #define SCEGU_VERTEX_FLOAT       ( 3 <<  7 )
+
 #define SCEGU_WEIGHT_NONE        ( 0 <<  9 )
 #define SCEGU_WEIGHT_UBYTE       ( 1 <<  9 )
 #define SCEGU_WEIGHT_USHORT      ( 2 <<  9 )
 #define SCEGU_WEIGHT_FLOAT       ( 3 <<  9 )
+
 #define SCEGU_INDEX_NONE         ( 0 << 11 )
 #define SCEGU_INDEX_UBYTE        ( 1 << 11 )
 #define SCEGU_INDEX_USHORT       ( 2 << 11 )
+
 #define SCEGU_WEIGHT_1           ( 0 << 14 )
 #define SCEGU_WEIGHT_2           ( 1 << 14 )
 #define SCEGU_WEIGHT_3           ( 2 << 14 )
@@ -261,6 +328,7 @@ enum GmoBoneAnimFlags : uint32_t {
 #define SCEGU_WEIGHT_6           ( 5 << 14 )
 #define SCEGU_WEIGHT_7           ( 6 << 14 )
 #define SCEGU_WEIGHT_8           ( 7 << 14 )
+
 #define SCEGU_VERTEX_1           ( 0 << 18 )
 #define SCEGU_VERTEX_2           ( 1 << 18 )
 #define SCEGU_VERTEX_3           ( 2 << 18 )

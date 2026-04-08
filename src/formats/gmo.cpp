@@ -94,15 +94,15 @@ auto GetGmoHeader(util::bytes::BinaryReader &reader) -> GmoHeader {
     header.style = AssertRead<uint32_t>(reader, "invalid header");
     header.option = AssertRead<uint32_t>(reader, "invalid header");
 
-    if (header.signature != SCEGMO_FORMAT_SIGNATURE) {
+    if (header.signature != kSceGmoFormatSignature) {
         throw GmoParseError{"incorrect file signature"};
     }
 
-    if (header.version != SCEGMO_FORMAT_VERSION) {
+    if (header.version != kSceGmoFormatVersion) {
         throw GmoParseError{"incorrect file signature"};
     }
 
-    if (header.style != SCEGMO_FORMAT_STYLE_PSP) {
+    if (header.style != kSceGmoFormatPsp) {
         throw GmoParseError{"incorrect format style, expected psp"};
     }
 
@@ -272,6 +272,14 @@ auto CountChunks(const util::bytes::BinaryReader &parent_reader) -> uint32_t {
     return result;
 }
 
+/**
+ * @brief Loader context for the GMO file
+ *
+ * This class will map the entire file and then perform loading operations
+ * on the "flattened" file structure as requested. This way the operations should
+ * not be architecture or endianness dependent, as everything is abstracted away
+ * by primitives like binary reader
+ */
 class GmoLoaderContext final {
 public:
     GmoLoaderContext(std::span<const uint8_t> buffer) : buffer_{buffer} {
@@ -322,6 +330,12 @@ public:
     auto operator=(GmoLoaderContext &&) = delete;
 
 private:
+    /**
+     * @brief Load a bone from given chunk
+     *
+     * @param bone_chunk the chunk with bone data
+     * @return GmoBone bone structure
+     */
     auto LoadBone(const GmoChunk &bone_chunk) const -> GmoBone {
         const glm::fvec3 kAxisX = {1.0f, 0.0f, 0.0f};
         const glm::fvec3 kAxisY = {0.0f, 1.0f, 0.0f};
@@ -354,7 +368,7 @@ private:
             case SCEGMO_VISIBILITY: {
                 AssertSeek(reader, args_offset);
                 bone.visibility = AssertRead<uint32_t>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_VISIBILITY;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasVisibility;
                 break;
             }
 
@@ -404,14 +418,14 @@ private:
                 bone.pivot.x = AssertRead<float>(reader);
                 bone.pivot.y = AssertRead<float>(reader);
                 bone.pivot.z = AssertRead<float>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_PIVOT;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasPivot;
                 break;
             }
 
             case SCEGMO_MULT_MATRIX: {
                 AssertSeek(reader, args_offset);
                 bone.local_matrix = ReadMat4(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_MULT_MATRIX;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasMultMatrix;
                 break;
             }
 
@@ -420,7 +434,7 @@ private:
                 bone.translation.x = AssertRead<float>(reader);
                 bone.translation.y = AssertRead<float>(reader);
                 bone.translation.z = AssertRead<float>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_TRANSLATE;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasTranslation;
                 break;
             }
 
@@ -430,7 +444,7 @@ private:
                 const auto ry = AssertRead<float>(reader);
                 const auto rx = AssertRead<float>(reader);
                 bone.rotation = glm::angleAxis(rz, kAxisZ) * glm::angleAxis(ry, kAxisY) * glm::angleAxis(rx, kAxisX);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_ROTATE;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasRotation;
                 break;
             }
 
@@ -440,7 +454,7 @@ private:
                 const auto rx = AssertRead<float>(reader);
                 const auto rz = AssertRead<float>(reader);
                 bone.rotation = glm::angleAxis(ry, kAxisY) * glm::angleAxis(rx, kAxisX) * glm::angleAxis(rz, kAxisZ);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_ROTATE;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasRotation;
                 break;
             }
 
@@ -451,7 +465,7 @@ private:
                 const auto z = AssertRead<float>(reader);
                 const auto w = AssertRead<float>(reader);
                 bone.rotation = glm::fquat{w, x, y, z};
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_ROTATE;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasRotation;
                 break;
             }
 
@@ -460,7 +474,7 @@ private:
                 bone.scale.x = AssertRead<float>(reader);
                 bone.scale.y = AssertRead<float>(reader);
                 bone.scale.z = AssertRead<float>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_SCALE;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasScale1;
                 break;
             }
 
@@ -469,7 +483,7 @@ private:
                 bone.scale.x = AssertRead<float>(reader);
                 bone.scale.y = AssertRead<float>(reader);
                 bone.scale.z = AssertRead<float>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_SCALE_2;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasScale2;
                 break;
             }
 
@@ -478,7 +492,7 @@ private:
                 bone.scale.x = AssertRead<float>(reader);
                 bone.scale.y = AssertRead<float>(reader);
                 bone.scale.z = AssertRead<float>(reader);
-                bone.flags = bone.flags | SCEGMO_BONE_HAS_SCALE_3;
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasScale3;
                 break;
             }
 
@@ -488,8 +502,30 @@ private:
                 break;
             }
 
+            case SCEGMO_BOUNDING_BOX: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                bone.bounding_min.x = AssertRead<float>(reader);
+                bone.bounding_min.y = AssertRead<float>(reader);
+                bone.bounding_min.z = AssertRead<float>(reader);
+                bone.bounding_max.x = AssertRead<float>(reader);
+                bone.bounding_max.y = AssertRead<float>(reader);
+                bone.bounding_max.z = AssertRead<float>(reader);
+                bone.flags = bone.flags | GmoBoneFlags::eBoneHasBoundingBox;
+                break;
+            }
+
+            case 226: {
+                // TODO: zsort is unk0 == 0
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto unknown0 = AssertRead<uint32_t>(reader);
+                const auto unknown1 = AssertRead<uint32_t>(reader);
+
+                GMO_DEBUG_PRINT("type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                break;
+            }
+
             default:
-                GMO_DEBUG_PRINT("invalid chunk type for bone: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for bone: {}", type);
                 break;
             }
 
@@ -502,6 +538,130 @@ private:
         }
 
         return bone;
+    }
+
+    auto LoadMesh(const GmoChunk &mesh_chunk) const -> GmoMesh {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(mesh_chunk) != SCEGMO_MESH) {
+            throw GmoParseError{"cannot load mesh from non-mesh chunk"};
+        }
+
+        GmoMesh mesh;
+
+        auto current_id = mesh_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_SET_MATERIAL: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                mesh.material = RefIndex(AssertRead<uint32_t>(reader));
+                break;
+            }
+
+            case SCEGMO_BLEND_SUBSET: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto num_indices = AssertRead<uint32_t>(reader);
+
+                mesh.blend_subset.reserve(num_indices);
+                for (uint32_t i = 0; i < num_indices; ++i) {
+                    mesh.blend_subset.emplace_back(AssertRead<uint32_t>(reader));
+                }
+
+                break;
+            }
+
+            case SCEGMO_SUBDIVISION: {
+                throw GmoParseError{fmt::format("SCEGMO_SUBDIVISION is unsupported")};
+            }
+
+            case SCEGMO_KNOT_VECTOR_U: {
+                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_U is unsupported")};
+            }
+
+            case SCEGMO_KNOT_VECTOR_V: {
+                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_V is unsupported")};
+            }
+
+            case SCEGMO_DRAW_PARTICLE: {
+                throw GmoParseError{fmt::format("SCEGMO_DRAW_PARTICLE is unsupported")};
+            }
+
+            case SCEGMO_DRAW_ARRAYS: {
+                break;
+            }
+
+            case SCEGMO_DRAW_B_SPLINE: {
+                break;
+            }
+
+            case SCEGMO_DRAW_RECT_MESH: {
+                break;
+            }
+
+            case SCEGMO_DRAW_RECT_PATCH: {
+                break;
+            }
+
+            default:
+                GMO_DEBUG_PRINT("skipping chunk type for mesh: {}", type);
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return mesh;
+    }
+
+    /**
+     * @brief Load a part from chunk data
+     *
+     * @param part_chunk the chunk that contains part data
+     * @return GmoPart loaded part
+     */
+    auto LoadPart(const GmoChunk &part_chunk) const -> GmoPart {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(part_chunk) != SCEGMO_PART) {
+            throw GmoParseError{"cannot load part from non-part chunk"};
+        }
+
+        GmoPart part;
+
+        auto current_id = part_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_MESH:
+                break;
+
+            case SCEGMO_ARRAYS:
+                break;
+
+            case SCEGMO_BOUNDING_BOX:
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                part.bounding_min.x = AssertRead<float>(reader);
+                part.bounding_min.y = AssertRead<float>(reader);
+                part.bounding_min.z = AssertRead<float>(reader);
+                part.bounding_max.x = AssertRead<float>(reader);
+                part.bounding_max.y = AssertRead<float>(reader);
+                part.bounding_max.z = AssertRead<float>(reader);
+                break;
+
+            default:
+                GMO_DEBUG_PRINT("skipping chunk type for part: {}", type);
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return part;
     }
 
     auto LoadModel(const GmoChunk &model_chunk) const -> GmoModel {
@@ -540,6 +700,7 @@ private:
                 break;
 
             case SCEGMO_PART:
+                model.parts.emplace_back(LoadPart(chunk));
                 break;
 
             case SCEGMO_MATERIAL:
@@ -552,7 +713,7 @@ private:
                 break;
 
             case SCEGMO_BOUNDING_BOX:
-                model.flags = model.flags |= SCEGMO_MODEL_HAS_BOUNDING_BOX;
+                model.flags = model.flags | GmoModelFlags::eModelHasBoundingBox;
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
                 model.bounding_min.x = AssertRead<float>(reader);
                 model.bounding_min.y = AssertRead<float>(reader);
@@ -566,7 +727,7 @@ private:
                 throw GmoParseError{fmt::format("SCEGMO_VERTEX_OFFSET is unsupported")};
 
             default:
-                GMO_DEBUG_PRINT("invalid chunk type for model: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for model: {}", type);
                 break;
             }
 
