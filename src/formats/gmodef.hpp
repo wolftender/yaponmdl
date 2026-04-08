@@ -8,7 +8,7 @@ static constexpr uint32_t kSceGmoFormatVersion = 0x312e3030;   // '1.00'
 static constexpr uint32_t kSceGmoFormatPsp = 0x00505350;       // 'PSP'
 
 // clang-format off
-enum class GmoChunkTypes : uint32_t {
+enum GmoChunkTypes : uint32_t {
     // Top level
     eSceGmoHalfChunk        = 0x8000,
     eSceGmoBlock            = 0x0001,
@@ -25,14 +25,14 @@ enum class GmoChunkTypes : uint32_t {
     eSceGmoFCurve           = 0x000c,
     eSceGmoBlindBlock       = 0x000f,
 
-    // commands
+    // commands - common
     eSceGmoCommand          = 0x0011,
     eSceGmoFileName         = 0x0012,
     eSceGmoFileImage        = 0x0013,
     eSceGmoBoundingBox      = 0x0014,
     eSceGmoVertexOffset     = 0x0015,
 
-    // SceGmoBone
+    // commands - SceGmoBone
     eSceGmoParentBone       = 0x0041,
     eSceGmoVisibility       = 0x0042,
     eSceGmoMorphWeights     = 0x0043,
@@ -50,6 +50,7 @@ enum class GmoChunkTypes : uint32_t {
     eSceGmoScale3           = 0x00e1,
     eSceGmoDrawPart         = 0x004e,
 
+    // commands - SceGmoMesh
     eSceGmoSetMateiral      = 0x0061,
     eSceGmoBlendSubset      = 0x0062,
     eSceGmoSubdivision      = 0x0063,
@@ -86,6 +87,46 @@ enum class GmoChunkTypes : uint32_t {
 
     eSceGmoBlindData        = 0x00f1,
     eSceGmoFileInfo         = 0x00ff,
+};
+// clang-format on
+
+// clang-format off
+
+/**
+ *   | offset | size | desc
+ *   | 0      | 4    | primitive type (SCEGU_PRIM_*)
+ *   | 4      | 4    | unused
+ *   | 8      | 1    | is sequential
+ *   | 9      | 3    | unused
+ *   | 12     | 2    | spline u flags (SCEGU_CLOSE_* and SCEGU_OPEN_*)
+ *   | 14     | 2    | spline v flags (SCEGU_CLOSE_* and SCEGU_OPEN_*)
+ *   | 16     | 2    | unused
+ *   | 18     | 3    | stride1
+ *   | 21     | 3    | unused
+ *   | 24     | 8    | stride2
+ * 
+ * stride is decoded as stride = stride1 * stride2
+ * so can be decoded as stride = ((flags>>18)&7) * (flags>>24)
+ */
+enum GmoPrimitiveFlags : uint32_t {
+    eSceGmoPrimitiveTypeMask            = 0x000f, // 0000 0000 0000 1111
+    eSceGmoPrimitiveTypePoints          = 0x0000, // 0000 0000 0000 0000
+    eSceGmoPrimitiveTypeLines           = 0x0001, // 0000 0000 0000 0001
+    eSceGmoPrimitiveTypeLineStrip       = 0x0002, // 0000 0000 0000 0010
+    eSceGmoPrimitiveTypeTriangles       = 0x0003, // 0000 0000 0000 0011
+    eSceGmoPrimitiveTypeTriangleStrip   = 0x0004, // 0000 0000 0000 0100
+    eSceGmoPrimitiveTypeTriangleFan     = 0x0005, // 0000 0000 0000 0101
+    eSceGmoPrimitiveTypeRectangles      = 0x0006, // 0000 0000 0000 0110
+
+    eSceGmoPrimitiveSplineMask          = 0xf000, // 1111 0000 0000 0000
+    eSceGmoPrimitiveOpenU               = 0x3000, // 0011 0000 0000 0000
+    eSceGmoPrimitiveOpenV               = 0xc000, // 1100 0000 0000 0000
+    eSceGmoPrimitiveOpenUIn             = 0x1000, // 0001 0000 0000 0000
+    eSceGmoPrimitiveOpenUOut            = 0x2000, // 0010 0000 0000 0000
+    eSceGmoPrimitiveOpenVIn             = 0x4000, // 0100 0000 0000 0000
+    eSceGmoPrimitiveOpenVOut            = 0x8000, // 1000 0000 0000 0000
+
+    eSceGmoPrimitiveSequential          = 0x0100, // 0000 0001 0000 0000
 };
 // clang-format on
 
@@ -169,27 +210,6 @@ enum GmoBlockFlags : uint32_t {
 
     SCEGMO_BLIND_DATA = 0x00f1,
     SCEGMO_FILE_INFO = 0x00ff
-};
-
-enum GmoPrimitiveFlags : uint32_t {
-    SCEGMO_PRIM_TYPE_MASK = 0x000f,
-    SCEGMO_PRIM_POINTS = 0x0000,
-    SCEGMO_PRIM_LINES = 0x0001,
-    SCEGMO_PRIM_LINE_STRIP = 0x0002,
-    SCEGMO_PRIM_TRIANGLES = 0x0003,
-    SCEGMO_PRIM_TRIANGLE_STRIP = 0x0004,
-    SCEGMO_PRIM_TRIANGLE_FAN = 0x0005,
-    SCEGMO_PRIM_RECTANGLES = 0x0006,
-
-    SCEGMO_PRIM_SPLINE_MASK = 0xf000,
-    SCEGMO_PRIM_OPEN_U = 0x3000,
-    SCEGMO_PRIM_OPEN_V = 0xc000,
-    SCEGMO_PRIM_OPEN_U_IN = 0x1000,
-    SCEGMO_PRIM_OPEN_U_OUT = 0x2000,
-    SCEGMO_PRIM_OPEN_V_IN = 0x4000,
-    SCEGMO_PRIM_OPEN_V_OUT = 0x8000,
-
-    SCEGMO_PRIM_SEQUENTIAL = 0x0100,
 };
 
 enum GmoFcurveFlags : uint32_t {
@@ -290,6 +310,47 @@ enum GmoBoneAnimFlags : uint32_t {
 
 // clang-format off
 // from libgu.h
+
+/* Primitive Type */
+#define SCEGU_PRIM_POINTS                  0
+#define SCEGU_PRIM_LINES                   1
+#define SCEGU_PRIM_LINE_STRIP              2
+#define SCEGU_PRIM_TRIANGLES               3
+#define SCEGU_PRIM_TRIANGLE_STRIP          4
+#define SCEGU_PRIM_TRIANGLE_FAN            5
+#define SCEGU_PRIM_RECTANGLES              6
+
+/* Spline Parameter */
+#define SCEGU_CLOSE_CLOSE                  0
+#define SCEGU_OPEN_CLOSE                   1
+#define SCEGU_CLOSE_OPEN                   2
+#define SCEGU_OPEN_OPEN                    3
+
+/* Sprite Flip Type */
+#define SCEGU_NOFLIP                       0
+#define SCEGU_FLIP_U                       1
+#define SCEGU_FLIP_V                       2
+#define SCEGU_FLIP_UV                      3
+#define SCEGU_NOROTATE                     0
+#define SCEGU_ROTATE_90                    1
+#define SCEGU_ROTATE_180                   2
+#define SCEGU_ROTATE_270                   3
+
+/**
+ *   | offset | size | desc
+ *   | 0      | 2    | texture format 
+ *   | 2      | 3    | color format 
+ *   | 5      | 2    | normal format 
+ *   | 7      | 2    | vertex format 
+ *   | 9      | 2    | weight format 
+ *   | 11     | 2    | index format
+ *   | 13     | 1    | reserved
+ *   | 14     | 4    | num weights
+ *   | 18     | 4    | num vertex
+ *   | 22     | 1    | reserved
+ *   | 23     | 1    | is through
+ */
+
 #define SCEGU_TEXTURE_NONE       ( 0 <<  0 )
 #define SCEGU_TEXTURE_UBYTE      ( 1 <<  0 )
 #define SCEGU_TEXTURE_USHORT     ( 2 <<  0 )

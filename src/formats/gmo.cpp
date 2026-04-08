@@ -173,6 +173,181 @@ inline auto GetChunkNameSize(const GmoChunk &chunk) -> uint32_t {
     return chunk.args_offset - 16;
 }
 
+// clang-format off
+enum SceGuFmtTexture {
+    eSceGuFmtTextureNONE    = 0,
+    eSceGuFmtTextureUBYTE   = 1,
+    eSceGuFmtTextureUSHORT  = 2,
+    eSceGuFmtTextureFLOAT   = 3,
+};
+
+enum SceGuFmtColor {
+    eSceGuFmtColorNONE      = 0,
+    eSceGuFmtColorPF5650    = 4,
+    eSceGuFmtColorPF5551    = 5,
+    eSceGuFmtColorPF4444    = 6,
+    eSceGuFmtColorPF8888    = 7
+};
+
+enum SceGuFmtNormal {
+    eSceGuFmtNormalNONE     = 0,
+    eSceGuFmtNormalBYTE     = 1,
+    eSceGuFmtNormalSHORT    = 2,
+    eSceGuFmtNormalFLOAT    = 3,
+};
+
+enum SceGuFmtVertex {
+    eSceGuFmtVertexNONE     = 0,
+    eSceGuFmtVertexBYTE     = 1,
+    eSceGuFmtVertexSHORT    = 2,
+    eSceGuFmtVertexFLOAT    = 3,
+};
+
+enum SceGuFmtWeight {
+    eSceGuFmtWeightNONE     = 0,
+    eSceGuFmtWeightUBYTE    = 1,
+    eSceGuFmtWeightUSHORT   = 2,
+    eSceGuFmtWeightFLOAT    = 3,
+};
+
+enum SceGuFmtIndex {
+    eSceGuFmtIndexNONE      = 0,
+    eSceGuFmtIndexUBYTE     = 1,
+    eSceGuFmtIndexUSHORT    = 2,
+};
+// clang-format on
+
+constexpr auto ToString(SceGuFmtTexture v) -> const char * {
+    switch (v) {
+    case eSceGuFmtTextureNONE:
+        return "NONE";
+    case eSceGuFmtTextureUBYTE:
+        return "UBYTE";
+    case eSceGuFmtTextureUSHORT:
+        return "USHORT";
+    case eSceGuFmtTextureFLOAT:
+        return "FLOAT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+constexpr auto ToString(SceGuFmtColor v) -> const char * {
+    switch (v) {
+    case eSceGuFmtColorNONE:
+        return "NONE";
+    case eSceGuFmtColorPF5650:
+        return "PF5650";
+    case eSceGuFmtColorPF5551:
+        return "PF5551";
+    case eSceGuFmtColorPF4444:
+        return "PF4444";
+    case eSceGuFmtColorPF8888:
+        return "PF8888";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+constexpr auto ToString(SceGuFmtNormal v) -> const char * {
+    switch (v) {
+    case eSceGuFmtNormalNONE:
+        return "NONE";
+    case eSceGuFmtNormalBYTE:
+        return "BYTE";
+    case eSceGuFmtNormalSHORT:
+        return "SHORT";
+    case eSceGuFmtNormalFLOAT:
+        return "FLOAT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+constexpr auto ToString(SceGuFmtVertex v) -> const char * {
+    switch (v) {
+    case eSceGuFmtVertexNONE:
+        return "NONE";
+    case eSceGuFmtVertexBYTE:
+        return "BYTE";
+    case eSceGuFmtVertexSHORT:
+        return "SHORT";
+    case eSceGuFmtVertexFLOAT:
+        return "FLOAT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+constexpr auto ToString(SceGuFmtWeight v) -> const char * {
+    switch (v) {
+    case eSceGuFmtWeightNONE:
+        return "NONE";
+    case eSceGuFmtWeightUBYTE:
+        return "UBYTE";
+    case eSceGuFmtWeightUSHORT:
+        return "USHORT";
+    case eSceGuFmtWeightFLOAT:
+        return "FLOAT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+constexpr auto ToString(SceGuFmtIndex v) -> const char * {
+    switch (v) {
+    case eSceGuFmtIndexNONE:
+        return "NONE";
+    case eSceGuFmtIndexUBYTE:
+        return "UBYTE";
+    case eSceGuFmtIndexUSHORT:
+        return "USHORT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+inline auto ColorPF5650ToRGBA8(uint16_t color) -> glm::fvec4 {
+    const auto r = uint16_t{0b1111100000000000} & color;
+    const auto g = uint16_t{0b0000011111100000} & color;
+    const auto b = uint16_t{0b0000000000011111} & color;
+
+    return {static_cast<float>(r) / 31.0f, static_cast<float>(g) / 63.0f, static_cast<float>(b) / 31.0f, 1.0f};
+}
+
+inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
+    const auto r = uint16_t{0b1111100000000000} & color;
+    const auto g = uint16_t{0b0000011111000000} & color;
+    const auto b = uint16_t{0b0000000000111110} & color;
+    const auto a = uint16_t{0b0000000000000001} & color;
+
+    return {
+        static_cast<float>(r) / 31.0f, static_cast<float>(g) / 31.0f, static_cast<float>(b) / 31.0f,
+        static_cast<float>(a)};
+}
+
+inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
+    const auto r = uint16_t{0xf000} & color;
+    const auto g = uint16_t{0x0f00} & color;
+    const auto b = uint16_t{0x00f0} & color;
+    const auto a = uint16_t{0x000f} & color;
+
+    return {
+        static_cast<float>(r) / 15.0f, static_cast<float>(g) / 15.0f, static_cast<float>(b) / 15.0f,
+        static_cast<float>(a) / 15.0f};
+}
+
+inline auto ColorPF8888ToRGBA8(uint32_t color) -> glm::fvec4 {
+    const auto r = 0xff000000 & color;
+    const auto g = 0x00ff0000 & color;
+    const auto b = 0x0000ff00 & color;
+    const auto a = 0x000000ff & color;
+
+    return {
+        static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f,
+        static_cast<float>(a) / 255.0f};
+}
+
 inline auto RefType(uint32_t ref) { return (0x7fff & ((ref) >> 16)); }
 inline auto RefLevel(uint32_t ref) { return (0x000f & ((ref) >> 12)); }
 inline auto RefIndex(uint32_t ref) { return (0x0fff & (ref)); }
@@ -208,6 +383,25 @@ auto ReadMat4(util::bytes::BinaryReader &reader) -> glm::fmat4x4 {
 
     return glm::make_mat4(values.data());
 }
+
+template <uint32_t D> auto AssertReadFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertRead<float>(reader));
+    }
+
+    return val;
+};
+
+template <typename T, uint32_t D> auto AssertReadFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    constexpr float kRange = static_cast<float>(std::numeric_limits<T>::max());
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertRead<T>(reader)) / kRange;
+    }
+
+    return val;
+};
 
 /**
  * @brief Retrieves the total count of children chunks in the given GMO chunk
@@ -515,7 +709,7 @@ private:
             }
 
             case 226: {
-                // TODO: zsort is unk0 == 0
+                // TODO: for patapon, zsort is unk0 == 0, then unk1 is just the value
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
                 const auto unknown0 = AssertRead<uint32_t>(reader);
                 const auto unknown1 = AssertRead<uint32_t>(reader);
@@ -538,6 +732,188 @@ private:
         }
 
         return bone;
+    }
+
+    auto LoadVertexArray(const GmoChunk &array_chunk) const -> GmoVertexArray {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(array_chunk) != SCEGMO_ARRAYS) {
+            throw GmoParseError{"cannot load array from non-array chunk"};
+        }
+
+        GmoVertexArray array;
+        AssertSeek(reader, GetChunkArgsOffset(array_chunk));
+
+        const auto native_format = AssertRead<uint32_t>(reader);
+        const auto native_num_verts = AssertRead<uint32_t>(reader);
+        const auto native_num_morphs = AssertRead<uint32_t>(reader);
+        [[maybe_unused]] const auto native_format2 = AssertRead<uint32_t>(reader);
+
+        // if vertex morphs are to be supported this has to be handled
+        if (native_num_morphs > 1) {
+            throw GmoParseError{"vertex morphs are not supported"};
+        }
+
+        // clang-format off
+        const auto fmt_texture  = 0b0011 & (native_format >>  0);
+        const auto fmt_color    = 0b0111 & (native_format >>  2);
+        const auto fmt_normal   = 0b0011 & (native_format >>  5);
+        const auto fmt_vertex   = 0b0011 & (native_format >>  7);
+        const auto fmt_weight   = 0b0011 & (native_format >>  9);
+        const auto fmt_index    = 0b0011 & (native_format >> 11);
+
+        auto num_weights  = 0b1111 & (native_format >> 14);
+        auto num_morphs   = 0b1111 & (native_format >> 18);
+        // clang-format on
+
+        if (fmt_texture != eSceGuFmtTextureNONE) {
+            array.flags = array.flags | GmoVertexArrayFlags::eHasUvs;
+        }
+
+        if (fmt_color != eSceGuFmtColorNONE) {
+            array.flags = array.flags | GmoVertexArrayFlags::eHasColor;
+        }
+
+        if (fmt_normal != eSceGuFmtNormalNONE) {
+            array.flags = array.flags | GmoVertexArrayFlags::eHasNormals;
+        }
+
+        if (fmt_vertex != eSceGuFmtVertexNONE) {
+            array.flags = array.flags | GmoVertexArrayFlags::eHasPositions;
+        }
+
+        if (fmt_weight != eSceGuFmtWeightNONE) {
+            array.flags = array.flags | GmoVertexArrayFlags::eHasWeights;
+            num_weights = num_weights + 1;
+        } else {
+            num_weights = 0;
+        }
+
+        array.num_weights = num_weights;
+
+        GMO_DEBUG_PRINT(
+            "load vertex array:\n"
+            "\tfmt_texture:\t\t{}\n"
+            "\tfmt_color:\t\t{}\n"
+            "\tfmt_normal:\t\t{}\n"
+            "\tfmt_vertex:\t\t{}\n"
+            "\tfmt_weight:\t\t{}\n"
+            "\tfmt_index:\t\t{}\n"
+            "\tnum_weights:\t\t{}\n"
+            "\tnum_morphs:\t\t{}",
+            ToString(static_cast<SceGuFmtTexture>(fmt_texture)), ToString(static_cast<SceGuFmtColor>(fmt_color)),
+            ToString(static_cast<SceGuFmtNormal>(fmt_normal)), ToString(static_cast<SceGuFmtVertex>(fmt_vertex)),
+            ToString(static_cast<SceGuFmtWeight>(fmt_weight)), ToString(static_cast<SceGuFmtIndex>(fmt_index)),
+            num_weights, num_morphs);
+
+        using Reader = util::bytes::BinaryReader;
+        const auto fnReadUv = [&]() -> glm::fvec2 (*)(Reader &) {
+            switch (fmt_texture) {
+            case eSceGuFmtTextureNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec2{0.0f, 0.0f}; };
+            case eSceGuFmtTextureUBYTE:
+                return [](Reader &r) { return AssertReadFVecN<uint8_t, 2>(r); };
+            case eSceGuFmtTextureUSHORT:
+                return [](Reader &r) { return AssertReadFVecN<uint16_t, 2>(r); };
+            case eSceGuFmtTextureFLOAT:
+                return [](Reader &r) { return AssertReadFVecN<2>(r); };
+            default:
+                throw GmoParseError{"unsupported texture uv format"};
+            }
+        }();
+
+        const auto fnReadColor = [&]() -> glm::fvec4 (*)(Reader &) {
+            switch (fmt_color) {
+            case eSceGuFmtColorNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f}; };
+            case eSceGuFmtColorPF5650:
+                return [](Reader &r) {
+                    const auto rgba = AssertRead<uint16_t>(r);
+                    return ColorPF5650ToRGBA8(rgba);
+                };
+            case eSceGuFmtColorPF5551:
+                return [](Reader &r) {
+                    const auto rgba = AssertRead<uint16_t>(r);
+                    return ColorPF5551ToRGBA8(rgba);
+                };
+            case eSceGuFmtColorPF4444:
+                return [](Reader &r) {
+                    const auto rgba = AssertRead<uint16_t>(r);
+                    return ColorPF4444ToRGBA8(rgba);
+                };
+            case eSceGuFmtColorPF8888:
+                return [](Reader &r) {
+                    const auto rgba = AssertRead<uint16_t>(r);
+                    return ColorPF8888ToRGBA8(rgba);
+                };
+            default:
+                throw GmoParseError{"unsupported vertex color format"};
+            }
+        }();
+
+        const auto fnReadNormal = [&]() -> glm::fvec3 (*)(Reader &) {
+            switch (fmt_normal) {
+            case eSceGuFmtNormalNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
+            case eSceGuFmtNormalBYTE:
+                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+            case eSceGuFmtNormalSHORT:
+                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+            case eSceGuFmtNormalFLOAT:
+                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+            default:
+                throw GmoParseError{"unsupported vertex normal format"};
+            }
+        }();
+
+        const auto fnReadPosition = [&]() -> glm::fvec3 (*)(Reader &) {
+            switch (fmt_vertex) {
+            case eSceGuFmtVertexNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
+            case eSceGuFmtVertexBYTE:
+                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+            case eSceGuFmtVertexSHORT:
+                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+            case eSceGuFmtVertexFLOAT:
+                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+            default:
+                throw GmoParseError{"unsupported vertex position format"};
+            }
+        }();
+
+        const auto fnReadWeight = [&]() -> float (*)(Reader &) {
+            switch (fmt_weight) {
+            case eSceGuFmtWeightNONE:
+                return []([[maybe_unused]] Reader &r) { return 0.0f; };
+            case eSceGuFmtWeightUBYTE:
+                return []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint8_t>(r)) / 255.0f; };
+            case eSceGuFmtWeightUSHORT:
+                return
+                    []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint16_t>(r)) / 65535.0f; };
+            case eSceGuFmtWeightFLOAT:
+                return []([[maybe_unused]] Reader &r) { return AssertRead<float>(r); };
+            default:
+                throw GmoParseError{"unsupported vertex weight format"};
+            }
+        }();
+
+        array.vertices.reserve(native_num_verts);
+        for (uint32_t i = 0; i < native_num_verts; ++i) {
+            GmoVertex vertex;
+
+            for (uint32_t w = 0; w < num_weights; ++w) {
+                vertex.weights[w] = fnReadWeight(reader);
+            }
+
+            vertex.uv = fnReadUv(reader);
+            vertex.color = fnReadColor(reader);
+            vertex.normal = fnReadNormal(reader);
+            vertex.position = fnReadPosition(reader);
+
+            array.vertices.emplace_back(vertex);
+        }
+
+        return array;
     }
 
     auto LoadMesh(const GmoChunk &mesh_chunk) const -> GmoMesh {
@@ -573,35 +949,90 @@ private:
                 break;
             }
 
+            // these calls are unsupported by the psp
             case SCEGMO_SUBDIVISION: {
-                throw GmoParseError{fmt::format("SCEGMO_SUBDIVISION is unsupported")};
+                throw GmoParseError{"SCEGMO_SUBDIVISION is unsupported"};
             }
 
             case SCEGMO_KNOT_VECTOR_U: {
-                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_U is unsupported")};
+                throw GmoParseError{"SCEGMO_KNOT_VECTOR_U is unsupported"};
             }
 
             case SCEGMO_KNOT_VECTOR_V: {
-                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_V is unsupported")};
+                throw GmoParseError{"SCEGMO_KNOT_VECTOR_V is unsupported"};
             }
 
             case SCEGMO_DRAW_PARTICLE: {
-                throw GmoParseError{fmt::format("SCEGMO_DRAW_PARTICLE is unsupported")};
+                throw GmoParseError{"SCEGMO_DRAW_PARTICLE is unsupported"};
             }
 
-            case SCEGMO_DRAW_ARRAYS: {
-                break;
-            }
-
+            // i would really love to implement splines
+            // but i have no models to test them on
+            // feel free to send me some if you are interested!
             case SCEGMO_DRAW_B_SPLINE: {
-                break;
+                throw GmoParseError{"SCEGMO_DRAW_B_SPLINE is unsupported"};
             }
 
             case SCEGMO_DRAW_RECT_MESH: {
-                break;
+                throw GmoParseError{"SCEGMO_DRAW_RECT_MESH is unsupported"};
             }
 
             case SCEGMO_DRAW_RECT_PATCH: {
+                throw GmoParseError{"SCEGMO_DRAW_RECT_PATCH is unsupported"};
+            }
+
+            case SCEGMO_DRAW_ARRAYS: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                GmoDrawArray draw;
+
+                const auto native_arrays = AssertRead<uint32_t>(reader);
+                const auto native_mode = AssertRead<uint32_t>(reader);
+                const auto native_num_verts = AssertRead<uint32_t>(reader);
+                const auto native_num_prims = AssertRead<uint32_t>(reader);
+
+                draw.array_id = native_arrays;
+                draw.num_vertices = native_num_verts;
+                draw.num_primitives = native_num_prims;
+
+                // this functionality is not needed for my purposes
+                // if you are intereset though, there is some research i did in the header file
+                // more or less what this is supposed to do is unindexed draw in a very convoluted way
+                if (GmoPrimitiveFlags::eSceGmoPrimitiveSequential & native_mode) {
+                    throw GmoParseError{"SCEGMO_PRIM_SEQUENTIAL is unsupported"};
+                }
+
+                switch (native_mode & GmoPrimitiveFlags::eSceGmoPrimitiveTypeMask) {
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypePoints:
+                    draw.primitive = GmoDrawPrimitive::ePoints;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeLines:
+                    draw.primitive = GmoDrawPrimitive::eLines;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeLineStrip:
+                    draw.primitive = GmoDrawPrimitive::eLineStrip;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangles:
+                    draw.primitive = GmoDrawPrimitive::eTriangles;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangleStrip:
+                    draw.primitive = GmoDrawPrimitive::eTriangleStrip;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangleFan:
+                    draw.primitive = GmoDrawPrimitive::eTriangleFan;
+                    break;
+                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeRectangles:
+                    draw.primitive = GmoDrawPrimitive::eRectangles;
+                    break;
+                default:
+                    throw GmoParseError{fmt::format("unsupported primitive type {}", native_mode)};
+                }
+
+                draw.indices.reserve(native_num_verts);
+                for (uint32_t i = 0; i < native_num_verts; ++i) {
+                    draw.indices.emplace_back(AssertRead<uint16_t>(reader));
+                }
+
+                mesh.draw_arrays.emplace_back(draw);
                 break;
             }
 
@@ -638,9 +1069,11 @@ private:
 
             switch (type) {
             case SCEGMO_MESH:
+                part.meshes.emplace_back(LoadMesh(chunk));
                 break;
 
             case SCEGMO_ARRAYS:
+                part.vertex_arrays.emplace_back(LoadVertexArray(chunk));
                 break;
 
             case SCEGMO_BOUNDING_BOX:

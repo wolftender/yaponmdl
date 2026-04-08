@@ -49,24 +49,27 @@ struct GmoVertex {
     glm::fvec3 position;
     glm::fvec3 normal;
     glm::fvec2 uv;
+    glm::fvec4 color;
 
-    std::array<float, 8> weights;
+    std::array<float, 8> weights = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 };
 
+// clang-format off
 enum class GmoBoneFlags : GmoFlags {
-    eBoneNone = 0,
-    eBoneHasTranslation = 1 << 0,
-    eBoneHasRotation = 1 << 1,
-    eBoneHasScale1 = 1 << 2,
-    eBoneHasScale2 = 1 << 3,
-    eBoneHasScale3 = 1 << 4,
-    eBoneHasMultMatrix = 1 << 5,
-    eBoneHasPivot = 1 << 6,
-    eBoneHasMorphWeights = 1 << 7,
-    eBoneHasVisibility = 1 << 8,
-    eBoneHasBoundingBox = 1 << 9,
-    eBoneHasBlendBones = 1 << 10,
+    eBoneNone               = 0,
+    eBoneHasTranslation     = 1 << 0,
+    eBoneHasRotation        = 1 << 1,
+    eBoneHasScale1          = 1 << 2,
+    eBoneHasScale2          = 1 << 3,
+    eBoneHasScale3          = 1 << 4,
+    eBoneHasMultMatrix      = 1 << 5,
+    eBoneHasPivot           = 1 << 6,
+    eBoneHasMorphWeights    = 1 << 7,
+    eBoneHasVisibility      = 1 << 8,
+    eBoneHasBoundingBox     = 1 << 9,
+    eBoneHasBlendBones      = 1 << 10,
 };
+// clang-format on
 
 struct GmoBone {
     GmoBoneFlags flags = GmoBoneFlags::eBoneNone;
@@ -96,44 +99,68 @@ struct GmoBone {
     glm::fmat4x4 world_matrix = {1.0f};
 };
 
-enum class GmoDrawType {
-    eArray,
-    eBspline,
-    eRectMesh,
-    eRectPatch,
+// clang-format off
+enum class GmoVertexArrayFlags : GmoFlags {
+    eNone           = 0,
+    eHasPositions   = 1 << 0,
+    eHasNormals     = 1 << 1,
+    eHasUvs         = 1 << 2,
+    eHasWeights     = 1 << 3,
+    eHasColor       = 1 << 4,
+};
+// clang-format on
+
+struct GmoVertexArray {
+    GmoVertexArrayFlags flags = GmoVertexArrayFlags::eNone;
+    uint8_t num_weights = 0;
+
+    std::vector<GmoVertex> vertices;
+};
+
+enum class GmoDrawPrimitive {
+    ePoints,
+    eLines,
+    eLineStrip,
+    eTriangles,
+    eTriangleStrip,
+    eTriangleFan,
+    eRectangles,
+};
+
+struct GmoDrawArray {
+    uint32_t array_id;             // reference to the array in the part arrays
+    GmoDrawPrimitive primitive;    // primitive type to draw
+    uint32_t num_vertices;         // how many vertices
+    uint32_t num_primitives;       // how many primitives
+    std::vector<uint32_t> indices; // index array (can be empty - unindexed draw)
 };
 
 struct GmoMesh {
     uint32_t material;
     std::vector<uint32_t> blend_subset;
+    std::vector<GmoDrawArray> draw_arrays;
 };
-
-struct GmoDrawArray {};
-struct GmoDrawBspline {};
-struct GmoDrawRectMesh {};
-struct GmoDrawRectPatch {};
 
 struct GmoPart {
     glm::fvec3 bounding_min = {0.0f, 0.0f, 0.0f};
     glm::fvec3 bounding_max = {0.0f, 0.0f, 0.0f};
 
+    std::vector<GmoVertexArray> vertex_arrays;
     std::vector<GmoMesh> meshes;
-    std::vector<GmoDrawArray> arrays;
-    std::vector<GmoDrawBspline> bspline_patches;
-    std::vector<GmoDrawRectMesh> rect_meshes;
-    std::vector<GmoDrawRectPatch> rect_patches;
 };
 
 struct GmoMaterial {};
 struct GmoTexture {};
 struct GmoMotion {};
 
+// clang-format off
 enum class GmoModelFlags : GmoFlags {
-    eModelNone = 0,
-    eModelHasBoundingBox = 1 << 0,
-    eModelHasVertexOffset = 1 << 1,
-    eModelHasTextureOffset = 1 << 2,
+    eModelNone              = 0,
+    eModelHasBoundingBox    = 1 << 0,
+    eModelHasVertexOffset   = 1 << 1,
+    eModelHasTextureOffset  = 1 << 2,
 };
+// clang-format on
 
 struct GmoModel {
     GmoModelFlags flags = GmoModelFlags::eModelNone;
