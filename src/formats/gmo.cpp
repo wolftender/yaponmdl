@@ -1030,30 +1030,30 @@ private:
                 // this functionality is not needed for my purposes
                 // if you are intereset though, there is some research i did in the header file
                 // more or less what this is supposed to do is unindexed draw in a very convoluted way
-                if (GmoPrimitiveFlags::eSceGmoPrimitiveSequential & native_mode) {
+                if (GmoPrimitiveFlags::SCEGMO_PRIM_SEQUENTIAL & native_mode) {
                     throw GmoParseError{"SCEGMO_PRIM_SEQUENTIAL is unsupported"};
                 }
 
-                switch (native_mode & GmoPrimitiveFlags::eSceGmoPrimitiveTypeMask) {
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypePoints:
+                switch (native_mode & GmoPrimitiveFlags::SCEGMO_PRIM_TYPE_MASK) {
+                case GmoPrimitiveFlags::SCEGMO_PRIM_POINTS:
                     draw.primitive = GmoDrawPrimitive::ePoints;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeLines:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_LINES:
                     draw.primitive = GmoDrawPrimitive::eLines;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeLineStrip:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_LINE_STRIP:
                     draw.primitive = GmoDrawPrimitive::eLineStrip;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangles:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_TRIANGLES:
                     draw.primitive = GmoDrawPrimitive::eTriangles;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangleStrip:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_TRIANGLE_STRIP:
                     draw.primitive = GmoDrawPrimitive::eTriangleStrip;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeTriangleFan:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_TRIANGLE_FAN:
                     draw.primitive = GmoDrawPrimitive::eTriangleFan;
                     break;
-                case GmoPrimitiveFlags::eSceGmoPrimitiveTypeRectangles:
+                case GmoPrimitiveFlags::SCEGMO_PRIM_RECTANGLES:
                     draw.primitive = GmoDrawPrimitive::eRectangles;
                     break;
                 default:

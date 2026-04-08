@@ -8,89 +8,6 @@ static constexpr uint32_t kSceGmoFormatVersion = 0x312e3030;   // '1.00'
 static constexpr uint32_t kSceGmoFormatPsp = 0x00505350;       // 'PSP'
 
 // clang-format off
-enum GmoChunkTypes : uint32_t {
-    // Top level
-    eSceGmoHalfChunk        = 0x8000,
-    eSceGmoBlock            = 0x0001,
-    eSceGmoFile             = 0x0002,
-    eSceGmoModel            = 0x0003,
-    eSceGmoBone             = 0x0004,
-    eSceGmoPart             = 0x0005,
-    eSceGmoMesh             = 0x0006,
-    eSceGmoArrays           = 0x0007,
-    eSceGmoMaterial         = 0x0008,
-    eSceGmoLayer            = 0x0009,
-    eSceGmoTexture          = 0x000a,
-    eSceGmoMotion           = 0x000b,
-    eSceGmoFCurve           = 0x000c,
-    eSceGmoBlindBlock       = 0x000f,
-
-    // commands - common
-    eSceGmoCommand          = 0x0011,
-    eSceGmoFileName         = 0x0012,
-    eSceGmoFileImage        = 0x0013,
-    eSceGmoBoundingBox      = 0x0014,
-    eSceGmoVertexOffset     = 0x0015,
-
-    // commands - SceGmoBone
-    eSceGmoParentBone       = 0x0041,
-    eSceGmoVisibility       = 0x0042,
-    eSceGmoMorphWeights     = 0x0043,
-    eSceGmoMorphIndex       = 0x004f,
-    eSceGmoBlendBones       = 0x0044,
-    eSceGmoBlendOffsets     = 0x0045,
-    eSceGmoPivot            = 0x0046,
-    eSceGmoMultMatrix       = 0x0047,
-    eSceGmoTranslate        = 0x0048,
-    eSceGmoRotateZYX        = 0x0049,
-    eSceGmoRotateXYZ        = 0x004a,
-    eSceGmoRotateQuat       = 0x004b,
-    eSceGmoScale1           = 0x004c,
-    eSceGmoScale2           = 0x004d,
-    eSceGmoScale3           = 0x00e1,
-    eSceGmoDrawPart         = 0x004e,
-
-    // commands - SceGmoMesh
-    eSceGmoSetMateiral      = 0x0061,
-    eSceGmoBlendSubset      = 0x0062,
-    eSceGmoSubdivision      = 0x0063,
-    eSceGmoKnotVectorU      = 0x0064,
-    eSceGmoKnotVectorV      = 0x0065,
-    eSceGmoDrawArrays       = 0x0066,
-    eSceGmoDrawParticle     = 0x0067,
-    eSceGmoDrawBspline      = 0x0068,
-    eSceGmoDrawRectMesh     = 0x0069,
-    eSceGmoDrawRectPatch    = 0x006a,
-
-    eSceGmoRenderState      = 0x0081,
-    eSceGmoDiffuse          = 0x0082,
-    eSceGmoSpecular         = 0x0083,
-    eSceGmoEmission         = 0x0084,
-    eSceGmoAmbient          = 0x0085,
-    eSceGmoReflection       = 0x0086,
-    eSceGmoRefraction       = 0x0087,
-    eSceGmoBump             = 0x0088,
-
-    eSceGmoSetTexture       = 0x0091,
-    eSceGmoMapType          = 0x0092,
-    eSceGmoMapFactor        = 0x0093,
-    eSceGmoBlendFunc        = 0x0094,
-    eSceGmoTexFunc          = 0x0095,
-    eSceGmoTexFilter        = 0x0096,
-    eSceGmoTexWrap          = 0x0097,
-    eSceGmoTexCrop          = 0x0098,
-
-    eSceGmoFrameLoop        = 0x00b1,
-    eSceGmoFrameRate        = 0x00b2,
-    eSceGmoFrameRepeat      = 0x00b4,
-    eSceGmoAnimate          = 0x00b3,
-
-    eSceGmoBlindData        = 0x00f1,
-    eSceGmoFileInfo         = 0x00ff,
-};
-// clang-format on
-
-// clang-format off
 
 /**
  *   | offset | size | desc
@@ -109,24 +26,24 @@ enum GmoChunkTypes : uint32_t {
  * so can be decoded as stride = ((flags>>18)&7) * (flags>>24)
  */
 enum GmoPrimitiveFlags : uint32_t {
-    eSceGmoPrimitiveTypeMask            = 0x000f, // 0000 0000 0000 1111
-    eSceGmoPrimitiveTypePoints          = 0x0000, // 0000 0000 0000 0000
-    eSceGmoPrimitiveTypeLines           = 0x0001, // 0000 0000 0000 0001
-    eSceGmoPrimitiveTypeLineStrip       = 0x0002, // 0000 0000 0000 0010
-    eSceGmoPrimitiveTypeTriangles       = 0x0003, // 0000 0000 0000 0011
-    eSceGmoPrimitiveTypeTriangleStrip   = 0x0004, // 0000 0000 0000 0100
-    eSceGmoPrimitiveTypeTriangleFan     = 0x0005, // 0000 0000 0000 0101
-    eSceGmoPrimitiveTypeRectangles      = 0x0006, // 0000 0000 0000 0110
+    SCEGMO_PRIM_TYPE_MASK       = 0x000f, // 0000 0000 0000 1111
+    SCEGMO_PRIM_POINTS          = 0x0000, // 0000 0000 0000 0000
+    SCEGMO_PRIM_LINES           = 0x0001, // 0000 0000 0000 0001
+    SCEGMO_PRIM_LINE_STRIP      = 0x0002, // 0000 0000 0000 0010
+    SCEGMO_PRIM_TRIANGLES       = 0x0003, // 0000 0000 0000 0011
+    SCEGMO_PRIM_TRIANGLE_STRIP  = 0x0004, // 0000 0000 0000 0100
+    SCEGMO_PRIM_TRIANGLE_FAN    = 0x0005, // 0000 0000 0000 0101
+    SCEGMO_PRIM_RECTANGLES      = 0x0006, // 0000 0000 0000 0110
 
-    eSceGmoPrimitiveSplineMask          = 0xf000, // 1111 0000 0000 0000
-    eSceGmoPrimitiveOpenU               = 0x3000, // 0011 0000 0000 0000
-    eSceGmoPrimitiveOpenV               = 0xc000, // 1100 0000 0000 0000
-    eSceGmoPrimitiveOpenUIn             = 0x1000, // 0001 0000 0000 0000
-    eSceGmoPrimitiveOpenUOut            = 0x2000, // 0010 0000 0000 0000
-    eSceGmoPrimitiveOpenVIn             = 0x4000, // 0100 0000 0000 0000
-    eSceGmoPrimitiveOpenVOut            = 0x8000, // 1000 0000 0000 0000
+    SCEGMO_PRIM_SPLINE_MASK     = 0xf000, // 1111 0000 0000 0000
+    SCEGMO_PRIM_OPEN_U          = 0x3000, // 0011 0000 0000 0000
+    SCEGMO_PRIM_OPEN_V          = 0xc000, // 1100 0000 0000 0000
+    SCEGMO_PRIM_OPEN_U_IN       = 0x1000, // 0001 0000 0000 0000
+    SCEGMO_PRIM_OPEN_U_OUT      = 0x2000, // 0010 0000 0000 0000
+    SCEGMO_PRIM_OPEN_V_IN       = 0x4000, // 0100 0000 0000 0000
+    SCEGMO_PRIM_OPEN_V_OUT      = 0x8000, // 1000 0000 0000 0000
 
-    eSceGmoPrimitiveSequential          = 0x0100, // 0000 0001 0000 0000
+    SCEGMO_PRIM_SEQUENTIAL      = 0x0100, // 0000 0001 0000 0000
 };
 // clang-format on
 
