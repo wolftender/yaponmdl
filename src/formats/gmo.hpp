@@ -4,6 +4,7 @@
 #include <optional>
 #include <vector>
 #include <span>
+#include <string>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -149,8 +150,119 @@ struct GmoPart {
     std::vector<GmoMesh> meshes;
 };
 
-struct GmoMaterial {};
-struct GmoTexture {};
+enum class GmoMaterialLayerFlags : GmoFlags {
+    eNone = 0,
+    eHasTextureCrop = 1 << 0,
+};
+
+enum class GmoMaterialLayerMapType {
+    eNone,
+    eDiffuse,
+    eSpecular,
+    eEmission,
+    eAmbient,
+    eReflection,
+    eRefraction,
+    eBump,
+};
+
+enum class GmoBlendOperator {
+    eAdd,
+    eSubtract,
+    eReverseSubtract,
+    eMin,
+    eMax,
+    eAbs,
+};
+
+enum class GmoBlendFunction {
+    eSrcColor,
+    eOneMinusSrcColor,
+    eDstColor,
+    eOneMinusDstColor,
+    eSrcAlpha,
+    eOneMinusSrcAlpha,
+    eDstAlpha,
+    eOneMinusDstAlpha,
+    eDoubleSrcAlpha,
+    eOneMinusDoubleSrcAlpha,
+    eDoubleDstAlpha,
+    eOneMinusDoubleDstAlpha,
+    eFixValue,
+};
+
+struct GmoMaterialLayer {
+    GmoMaterialLayerFlags flags = GmoMaterialLayerFlags::eNone;
+    GmoMaterialLayerMapType map_type = GmoMaterialLayerMapType::eNone;
+
+    float map_factor = 0.0f;
+    uint32_t texture_id;
+
+    GmoBlendOperator blend_op = GmoBlendOperator::eAdd;
+    GmoBlendFunction blend_func1 = GmoBlendFunction::eSrcAlpha;
+    GmoBlendFunction blend_func2 = GmoBlendFunction::eOneMinusSrcAlpha;
+    uint32_t src_mask = 0xffffffff;
+    uint32_t dst_mask = 0xffffffff;
+
+    Rect<float> texture_crop = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+};
+
+// clang-format off
+enum GmoMaterialColor {
+    eGmoMaterialColorBlack      = 0,
+    eGmoMaterialColorDiffuse    = 1,
+    eGmoMaterialColorSpecular   = 2,
+    eGmoMaterialColorEmission   = 3,
+    eGmoMaterialColorAmbient    = 4,
+    eGmoMaterialColorReflection = 5,
+    eGmoMaterialColorCount
+};
+// clang-format on
+
+// clang-format off
+enum class GmoMaterialFlags : GmoFlags {
+    eNone = 0,
+    eEnableLighting     = 1 << 0,
+    eEnableFog          = 1 << 1,
+    eEnableCullFace     = 1 << 2,
+    eEnableDepthTest    = 1 << 3,
+    eEnableDepthMask    = 1 << 4,
+    eEnableAlphaTest    = 1 << 5,
+    eEnableAlphaMask    = 1 << 6,
+    eHasDiffuse         = 1 << 7,
+    eHasSpecular        = 1 << 8,
+    eHasEmission        = 1 << 9,
+    eHasAmbient         = 1 << 10,
+    eHasReflection      = 1 << 11,
+    eHasRefraction      = 1 << 12,
+};
+// clang-format on
+
+struct GmoMaterial {
+    GmoMaterialFlags flags = GmoMaterialFlags::eNone;
+    std::vector<GmoMaterialLayer> layers;
+
+    // clang-format off
+    std::array<glm::fvec4, eGmoMaterialColorCount> colors = {
+        glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
+        glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
+        glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
+        glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+        glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+        glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    // clang-format on
+
+    float shininess = 0.0f;
+    float refraction = 1.0f;
+    float bump = 0.0f;
+};
+
+struct GmoTexture {
+    std::string filename;
+    std::vector<uint8_t> data;
+};
+
 struct GmoMotion {};
 
 // clang-format off

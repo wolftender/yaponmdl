@@ -1125,6 +1125,320 @@ private:
         return part;
     }
 
+    auto LoadMaterialLayer(const GmoChunk &layer_chunk) const -> GmoMaterialLayer {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(layer_chunk) != SCEGMO_LAYER) {
+            throw GmoParseError{"cannot load layer from non-layer chunk"};
+        }
+
+        GmoMaterialLayer layer;
+
+        auto current_id = layer_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_SET_TEXTURE:
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                layer.texture_id = AssertRead<uint32_t>(reader);
+                break;
+
+            case SCEGMO_MAP_TYPE: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto native_type = AssertRead<uint32_t>(reader);
+                switch (native_type) {
+                case SCEGMO_DIFFUSE:
+                    layer.map_type = GmoMaterialLayerMapType::eDiffuse;
+                    break;
+                case SCEGMO_SPECULAR:
+                    layer.map_type = GmoMaterialLayerMapType::eSpecular;
+                    break;
+                case SCEGMO_EMISSION:
+                    layer.map_type = GmoMaterialLayerMapType::eEmission;
+                    break;
+                case SCEGMO_AMBIENT:
+                    layer.map_type = GmoMaterialLayerMapType::eAmbient;
+                    break;
+                case SCEGMO_REFLECTION:
+                    layer.map_type = GmoMaterialLayerMapType::eReflection;
+                    break;
+                case SCEGMO_REFRACTION:
+                    layer.map_type = GmoMaterialLayerMapType::eRefraction;
+                    break;
+                default:
+                    GMO_DEBUG_PRINT("invalid type {} for material layer", native_type);
+                    break;
+                }
+
+                break;
+            }
+
+            case SCEGMO_BLEND_FUNC: {
+                constexpr std::array<GmoBlendOperator, 6> kBlendOps = {
+                    GmoBlendOperator::eAdd, GmoBlendOperator::eSubtract, GmoBlendOperator::eReverseSubtract,
+                    GmoBlendOperator::eMin, GmoBlendOperator::eMax,      GmoBlendOperator::eAbs};
+
+                constexpr std::array<GmoBlendFunction, 10> kBlendFuncs = {
+                    GmoBlendFunction::eFixValue, GmoBlendFunction::eFixValue,
+                    GmoBlendFunction::eSrcColor, GmoBlendFunction::eOneMinusSrcColor,
+                    GmoBlendFunction::eDstColor, GmoBlendFunction::eOneMinusDstColor,
+                    GmoBlendFunction::eSrcAlpha, GmoBlendFunction::eOneMinusSrcAlpha,
+                    GmoBlendFunction::eDstAlpha, GmoBlendFunction::eOneMinusDstAlpha,
+                };
+
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto native_mode = AssertRead<uint32_t>(reader);
+                const auto native_src = AssertRead<uint32_t>(reader);
+                const auto native_dst = AssertRead<uint32_t>(reader);
+
+                if (native_mode < 6) {
+                    layer.blend_op = kBlendOps[native_mode];
+                } else {
+                    GMO_DEBUG_PRINT("invalid blend op {}", native_mode);
+                }
+
+                if (native_src < 10) {
+                    layer.blend_func1 = kBlendFuncs[native_src];
+                    layer.src_mask = native_src > 0 ? 0xffffffff : 0;
+                } else {
+                    GMO_DEBUG_PRINT("invalid blend src {}", native_src);
+                }
+
+                if (native_dst < 10) {
+                    layer.blend_func1 = kBlendFuncs[native_dst];
+                    layer.dst_mask = native_dst > 0 ? 0xffffffff : 0;
+                } else {
+                    GMO_DEBUG_PRINT("invalid blend dst {}", native_dst);
+                }
+
+                break;
+            }
+
+            case SCEGMO_TEX_CROP: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto x = AssertRead<float>(reader);
+                const auto y = AssertRead<float>(reader);
+                const auto w = AssertRead<float>(reader);
+                const auto h = AssertRead<float>(reader);
+
+                layer.texture_crop.min = {x, y};
+                layer.texture_crop.max = layer.texture_crop.min + glm::fvec2{w, h};
+
+                break;
+            }
+
+            default:
+                GMO_DEBUG_PRINT("skipping chunk type for layer: {}", type);
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return layer;
+    }
+
+    auto LoadMaterial(const GmoChunk &material_chunk) const -> GmoMaterial {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(material_chunk) != SCEGMO_MATERIAL) {
+            throw GmoParseError{"cannot load material from non-material chunk"};
+        }
+
+        GmoMaterial material;
+
+        auto current_id = material_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_LAYER: {
+                auto layer = LoadMaterialLayer(chunk);
+                switch (layer.map_type) {
+                case GmoMaterialLayerMapType::eDiffuse:
+                    material.flags = material.flags | GmoMaterialFlags::eHasDiffuse;
+                    break;
+                case GmoMaterialLayerMapType::eAmbient:
+                    material.flags = material.flags | GmoMaterialFlags::eHasAmbient;
+                    break;
+                case GmoMaterialLayerMapType::eEmission:
+                    material.flags = material.flags | GmoMaterialFlags::eHasEmission;
+                    break;
+                case GmoMaterialLayerMapType::eReflection:
+                    material.flags = material.flags | GmoMaterialFlags::eHasReflection;
+                    break;
+                case GmoMaterialLayerMapType::eRefraction:
+                    material.flags = material.flags | GmoMaterialFlags::eHasRefraction;
+                    break;
+                case GmoMaterialLayerMapType::eSpecular:
+                    material.flags = material.flags | GmoMaterialFlags::eHasSpecular;
+                    break;
+                default:
+                    break;
+                }
+
+                material.layers.emplace_back(std::move(layer));
+                break;
+            }
+
+            case SCEGMO_RENDER_STATE: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto render_state = AssertRead<uint32_t>(reader);
+
+                switch (render_state) {
+                case SCEGMO_STATE_LIGHTING:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableLighting;
+                    break;
+
+                case SCEGMO_STATE_FOG:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableFog;
+                    break;
+
+                case SCEGMO_STATE_CULL_FACE:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableCullFace;
+                    break;
+
+                case SCEGMO_STATE_DEPTH_TEST:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableDepthTest;
+                    break;
+
+                case SCEGMO_STATE_DEPTH_MASK:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableDepthMask;
+                    break;
+
+                case SCEGMO_STATE_ALPHA_TEST:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableAlphaTest;
+                    break;
+
+                case SCEGMO_STATE_ALPHA_MASK:
+                    material.flags = material.flags | GmoMaterialFlags::eEnableAlphaMask;
+                    break;
+
+                default:
+                    break;
+                }
+            }
+
+            case SCEGMO_DIFFUSE: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.colors[eGmoMaterialColorDiffuse].r = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorDiffuse].g = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorDiffuse].b = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorDiffuse].a = AssertRead<float>(reader);
+                break;
+            }
+
+            case SCEGMO_SPECULAR: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.colors[eGmoMaterialColorSpecular].r = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorSpecular].g = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorSpecular].b = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorSpecular].a = AssertRead<float>(reader);
+                material.shininess = AssertRead<float>(reader);
+                break;
+            }
+
+            case SCEGMO_EMISSION: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.colors[eGmoMaterialColorEmission].r = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorEmission].g = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorEmission].b = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorEmission].a = AssertRead<float>(reader);
+                break;
+            }
+
+            case SCEGMO_AMBIENT: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.colors[eGmoMaterialColorAmbient].r = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorAmbient].g = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorAmbient].b = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorAmbient].a = AssertRead<float>(reader);
+                break;
+            }
+
+            case SCEGMO_REFLECTION: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.colors[eGmoMaterialColorReflection].r = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorReflection].g = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorReflection].b = AssertRead<float>(reader);
+                material.colors[eGmoMaterialColorReflection].a = AssertRead<float>(reader);
+                break;
+            }
+
+            case SCEGMO_REFRACTION: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                material.refraction = AssertRead<float>(reader);
+                break;
+            }
+
+            default:
+                GMO_DEBUG_PRINT("skipping chunk type for material: {}", type);
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return material;
+    }
+
+    auto LoadTexture(const GmoChunk &texture_chunk) const -> GmoTexture {
+        util::bytes::BinaryReader reader{buffer_};
+
+        if (GetChunkType(texture_chunk) != SCEGMO_TEXTURE) {
+            throw GmoParseError{"cannot load texture from non-texture chunk"};
+        }
+
+        GmoTexture texture;
+        auto current_id = texture_chunk.child_id;
+        while (current_id.has_value()) {
+            const auto &chunk = map_[current_id.value()];
+            const auto type = GetChunkType(chunk);
+
+            switch (type) {
+            case SCEGMO_FILE_NAME: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                std::array<char, 256> name_buffer;
+
+                std::fill(name_buffer.begin(), name_buffer.end(), 0);
+                uint8_t ch = AssertRead<uint8_t>(reader);
+                size_t idx = 0;
+
+                while (ch && idx < 255) {
+                    name_buffer[idx++] = ch;
+                    ch = AssertRead<uint8_t>(reader);
+                }
+
+                texture.filename = std::string{name_buffer.data()};
+                break;
+            }
+
+            case SCEGMO_FILE_IMAGE: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const auto size = AssertRead<uint32_t>(reader);
+                const auto read_buffer = reader.ReadBuffer(size);
+
+                if (!read_buffer.has_value()) {
+                    throw GmoParseError{fmt::format("cannot read {} bytes for texture data", size)};
+                }
+
+                texture.data.assign(read_buffer->begin(), read_buffer->end());
+                break;
+            }
+
+            default:
+                break;
+            }
+
+            current_id = chunk.next_id;
+        }
+
+        return texture;
+    }
+
     auto LoadModel(const GmoChunk &model_chunk) const -> GmoModel {
         util::bytes::BinaryReader reader{buffer_};
 
@@ -1165,9 +1479,11 @@ private:
                 break;
 
             case SCEGMO_MATERIAL:
+                model.materials.emplace_back(LoadMaterial(chunk));
                 break;
 
             case SCEGMO_TEXTURE:
+                model.textures.emplace_back(LoadTexture(chunk));
                 break;
 
             case SCEGMO_MOTION:
