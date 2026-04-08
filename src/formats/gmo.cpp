@@ -46,6 +46,7 @@ struct GmoChunk {
     std::optional<uint32_t> next_id;
     std::optional<uint32_t> child_id;
 
+    std::string name;
     std::span<uint8_t> data;
 };
 
@@ -162,7 +163,7 @@ inline auto GetChunkNameOffset(const GmoChunk &chunk) -> std::optional<uint32_t>
         return std::nullopt;
     }
 
-    return chunk.position + kChunkHeaderSize + 1;
+    return chunk.position + kChunkHeaderSize;
 }
 
 inline auto GetChunkNameSize(const GmoChunk &chunk) -> uint32_t {
@@ -364,13 +365,40 @@ auto ReadChunk(util::bytes::BinaryReader &reader) -> GmoChunk {
     chunk.type = AssertRead<uint16_t>(reader, "invalid chunk");
     chunk.args_offset = AssertRead<uint16_t>(reader, "invalid chunk");
     chunk.next_offset = AssertRead<uint32_t>(reader, "invalid chunk");
-    chunk.child_offset = AssertRead<uint32_t>(reader, "invalid chunk");
-    chunk.data_offset = AssertRead<uint32_t>(reader, "invalid chunk");
+
+    // sometimes the file will end with a half-chunk
+    // we need to handle this kind of behavior here, because otherwise an exception
+    // will be thrown, half chunks are smaller than full chunks!
+    if ((SCEGMO_HALF_CHUNK & chunk.type) == 0) {
+        chunk.child_offset = AssertRead<uint32_t>(reader, "invalid chunk");
+        chunk.data_offset = AssertRead<uint32_t>(reader, "invalid chunk");
+    }
 
     // for now, don't initialize those, they will be initialized later
     chunk.self_id = 0;
     chunk.next_id = std::nullopt;
     chunk.child_id = std::nullopt;
+
+    return chunk;
+}
+
+auto ReadChunkFull(util::bytes::BinaryReader &parent_reader) -> GmoChunk {
+    auto reader = parent_reader;
+    auto chunk = ReadChunk(reader);
+
+    const auto name_offset = GetChunkNameOffset(chunk);
+    const auto name_length = GetChunkNameSize(chunk);
+
+    if (name_offset.has_value()) {
+        AssertSeek(reader, name_offset.value());
+        const auto name_bytes = reader.ReadBuffer(name_length);
+
+        if (!name_bytes.has_value()) {
+            throw GmoParseError{"invalid chunk: name cannot be read"};
+        }
+
+        chunk.name = std::string{name_bytes->begin(), name_bytes->end()};
+    }
 
     return chunk;
 }
@@ -1213,7 +1241,7 @@ private:
         while (current_position < end_position) {
             AssertSeek(reader, current_position);
 
-            const auto current_chunk_id = InsertChunk(ReadChunk(reader));
+            const auto current_chunk_id = InsertChunk(ReadChunkFull(reader));
             const auto next_position = GetChunkNextPosition(map_[current_chunk_id]);
 
             if (!map_[parent_id].child_id.has_value()) {
@@ -1255,7 +1283,7 @@ private:
         while (current_position < end_position) {
             AssertSeek(reader, current_position);
 
-            const auto current_chunk_id = InsertChunk(ReadChunk(reader));
+            const auto current_chunk_id = InsertChunk(ReadChunkFull(reader));
             const auto next_position = GetChunkNextPosition(map_[current_chunk_id]);
 
             map_[current_chunk_id].self_id = current_chunk_id;

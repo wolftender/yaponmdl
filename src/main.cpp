@@ -86,7 +86,7 @@ auto DebugPrintArrays(const gmo::GmoModel &model) -> void {
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
-    std::fstream fs{"samples/chr01_01_01_1.gxx.gmo"};
+    std::fstream fs{"samples/chr01_01_01_1.gxx.gmo", std::ios::binary | std::ios::in};
     if (!fs.good()) {
         fmt::println("failed to open model");
         return EXIT_FAILURE;
