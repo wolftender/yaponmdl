@@ -12,6 +12,9 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       }
     },
     {
@@ -21,6 +24,16 @@
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
       "hidden": true
+    },
+    {
+      "name": "windows-clang",
+      "displayName": "LLVM Clang Compiler on Windows",
+      "description": "Preset for Windows Clang builds",
+      "hidden": true,
+      "inherits": "clang",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
     },
     {
       "inherits": "msvc",
@@ -63,10 +76,10 @@
       }
     },
     {
-      "inherits": "clang",
-      "name": "clang-x64-debug",
-      "displayName": "LLVM x64 (Debug)",
-      "description": "LLVM x64 Debug preset",
+      "inherits": "windows-clang",
+      "name": "win-clang-x64-debug",
+      "displayName": "Windows LLVM x64 (Debug)",
+      "description": "Windows LLVM x64 Debug preset",
       "generator": "Ninja",
       "architecture": {
         "value": "x64",
@@ -79,10 +92,10 @@
       }
     },
     {
-      "inherits": "clang",
-      "name": "clang-x64-release",
-      "displayName": "LLVM x64 (Release)",
-      "description": "LLVM x64 Release preset",
+      "inherits": "windows-clang",
+      "name": "win-clang-x64-release",
+      "displayName": "Windows LLVM x64 (Release)",
+      "description": "Windows LLVM x64 Release preset",
       "generator": "Ninja",
       "architecture": {
         "value": "x64",
