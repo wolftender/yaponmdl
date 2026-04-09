@@ -47,7 +47,7 @@ enum GmoPrimitiveFlags : uint32_t {
 };
 // clang-format on
 
-enum GmoBlockFlags : uint32_t {
+enum GmoChunkType : uint32_t {
     SCEGMO_BASE_RESERVED = 0x0000, /* 0000-0fff : reserved */
     SCEGMO_BASE_PRIVATE = 0x1000,  /* 1000-3fff : private use */
     SCEGMO_BASE_PUBLIC = 0x4000,   /* 4000-7fff : public use */
@@ -173,9 +173,6 @@ enum StateFlags : uint32_t {
     SCEGMO_STATE_DEPTH_MASK = 5,
     SCEGMO_STATE_ALPHA_TEST = 6,
     SCEGMO_STATE_ALPHA_MASK = 7,
-
-    SCEGMO_STATE_ENABLE_LIGHTING = 0, /* obsolete */
-    SCEGMO_STATE_ENABLE_FOG = 1       /* obsolete */
 };
 
 enum GmoBlendFlags : uint32_t {
@@ -186,16 +183,16 @@ enum GmoBlendFlags : uint32_t {
     SCEGMO_BLEND_MAX = 4,
     SCEGMO_BLEND_DIFF = 5,
 
-    SCEGMO_BLEND_ZERO = 0,          /* != SCEGU */
-    SCEGMO_BLEND_ONE = 1,           /* != SCEGU */
-    SCEGMO_BLEND_SRC_COLOR = 2,     /* != SCEGU */
-    SCEGMO_BLEND_INV_SRC_COLOR = 3, /* != SCEGU */
-    SCEGMO_BLEND_DST_COLOR = 4,     /* != SCEGU */
-    SCEGMO_BLEND_INV_DST_COLOR = 5, /* != SCEGU */
-    SCEGMO_BLEND_SRC_ALPHA = 6,     /* != SCEGU */
-    SCEGMO_BLEND_INV_SRC_ALPHA = 7, /* != SCEGU */
-    SCEGMO_BLEND_DST_ALPHA = 8,     /* != SCEGU */
-    SCEGMO_BLEND_INV_DST_ALPHA = 9, /* != SCEGU */
+    SCEGMO_BLEND_ZERO = 0,
+    SCEGMO_BLEND_ONE = 1,
+    SCEGMO_BLEND_SRC_COLOR = 2,
+    SCEGMO_BLEND_INV_SRC_COLOR = 3,
+    SCEGMO_BLEND_DST_COLOR = 4,
+    SCEGMO_BLEND_INV_DST_COLOR = 5,
+    SCEGMO_BLEND_SRC_ALPHA = 6,
+    SCEGMO_BLEND_INV_SRC_ALPHA = 7,
+    SCEGMO_BLEND_DST_ALPHA = 8,
+    SCEGMO_BLEND_INV_DST_ALPHA = 9,
 };
 
 enum GmoFuncFlags : uint32_t {
@@ -209,10 +206,10 @@ enum GmoFuncFlags : uint32_t {
 enum GmoFilterFlags : uint32_t {
     SCEGMO_FILTER_NEAREST = 0,
     SCEGMO_FILTER_LINEAR = 1,
-    SCEGMO_FILTER_NEAREST_MIPMAP_NEAREST = 2, /* != SCEGU */
-    SCEGMO_FILTER_LINEAR_MIPMAP_NEAREST = 3,  /* != SCEGU */
-    SCEGMO_FILTER_NEAREST_MIPMAP_LINEAR = 4,  /* != SCEGU */
-    SCEGMO_FILTER_LINEAR_MIPMAP_LINEAR = 5,   /* != SCEGU */
+    SCEGMO_FILTER_NEAREST_MIPMAP_NEAREST = 2,
+    SCEGMO_FILTER_LINEAR_MIPMAP_NEAREST = 3,
+    SCEGMO_FILTER_NEAREST_MIPMAP_LINEAR = 4,
+    SCEGMO_FILTER_LINEAR_MIPMAP_LINEAR = 5,
 };
 
 enum GmoWrapFlags : uint32_t {

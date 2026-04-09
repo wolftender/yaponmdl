@@ -118,11 +118,10 @@ auto DebugPrintFcurves(const gmo::GmoModel &model) -> void {
     }
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
-    std::fstream fs{"samples/chr01_01_01_1.gxx.gmo", std::ios::binary | std::ios::in};
+auto LoadBinaryFile(const std::string &path) -> std::vector<uint8_t> {
+    std::fstream fs{path, std::ios::binary | std::ios::in};
     if (!fs.good()) {
-        fmt::println("failed to open model");
-        return EXIT_FAILURE;
+        throw std::runtime_error{fmt::format("failed to open {}", path)};
     }
 
     fs.seekg(0, std::ios::end);
@@ -133,14 +132,26 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
     data.resize(size);
     fs.read(reinterpret_cast<char *>(data.data()), size);
 
+    return data;
+}
+
+int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
+    const auto model_data = LoadBinaryFile("samples/chr50_04_01_1.gxx");
+    const auto image_data = LoadBinaryFile("samples/chr50_04_01_1.gxt");
+
     try {
-        const auto model = gmo::LoadModelFromMemory(data);
+        const auto model = gmo::LoadModelFromMemory(model_data);
         fmt::println("done: {}", model.size());
 
         DebugPrintArrays(model.front());
-        DebugPrintFcurves(model.front());
+
+        std::fstream ofs{"texture.bin", std::ios::binary | std::ios::out};
+        const auto &tex = model.front().textures[0].data;
+        ofs.write(reinterpret_cast<const char *>(tex.data()), tex.size());
+
+        fmt::println("written {} bytes", tex.size());
     } catch (const std::exception &e) {
-        fmt::println(stderr, "failed to load model: {}", e.what());
+        fmt::println(stderr, "fatal error: {}", e.what());
         return EXIT_FAILURE;
     }
 

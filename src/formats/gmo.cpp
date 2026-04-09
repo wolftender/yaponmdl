@@ -566,7 +566,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(bone_chunk) != SCEGMO_BONE) {
-            throw GmoParseError{"cannot load bone from non-bone chunk"};
+            throw GmoParseError{fmt::format("cannot load bone from non-bone chunk with name {}", bone_chunk.name)};
         }
 
         const auto num_draw_parts = CountChildrenOfType(bone_chunk, SCEGMO_DRAW_PART);
@@ -597,11 +597,11 @@ private:
             }
 
             case SCEGMO_MORPH_WEIGHTS: {
-                throw GmoParseError{"SCEGMO_MORPH_WEIGHTS is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_MORPH_WEIGHTS is unsupported in chunk {}", bone_chunk.name)};
             }
 
             case SCEGMO_MORPH_INDEX: {
-                throw GmoParseError{"SCEGMO_MORPH_INDEX is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_MORPH_INDEX is unsupported in chunk {}", bone.name)};
             }
 
             case SCEGMO_BLEND_BONES: {
@@ -609,7 +609,8 @@ private:
                 const auto num_bones = AssertRead<uint32_t>(reader);
 
                 if (num_bones > 8) {
-                    throw GmoParseError{fmt::format("cannot have more than 8 blend bones, requested: {}", num_bones)};
+                    throw GmoParseError{fmt::format(
+                        "cannot have more than 8 blend bones, requested: {}, in chunk {}", num_bones, bone_chunk.name)};
                 }
 
                 bone.blend_bones.reserve(num_bones);
@@ -749,7 +750,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for bone: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for bone {} with name {}", type, bone_chunk.name);
                 break;
             }
 
@@ -768,7 +769,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(array_chunk) != SCEGMO_ARRAYS) {
-            throw GmoParseError{"cannot load array from non-array chunk"};
+            throw GmoParseError{fmt::format("cannot load array from non-array chunk with name {}", array_chunk.name)};
         }
 
         GmoVertexArray array;
@@ -783,7 +784,7 @@ private:
 
         // if vertex morphs are to be supported this has to be handled
         if (native_num_morphs > 1) {
-            throw GmoParseError{"vertex morphs are not supported"};
+            throw GmoParseError{fmt::format("vertex morphs are not supported in chunk {}", array_chunk.name)};
         }
 
         // clang-format off
@@ -850,7 +851,8 @@ private:
             case eSceGuFmtTextureFLOAT:
                 return [](Reader &r) { return AssertReadFVecN<2>(r); };
             default:
-                throw GmoParseError{"unsupported texture uv format"};
+                throw GmoParseError{
+                    fmt::format("unsupported texture uv format {} in chunk {}", fmt_texture, array_chunk.name)};
             }
         }();
 
@@ -879,7 +881,8 @@ private:
                     return ColorPF8888ToRGBA8(rgba);
                 };
             default:
-                throw GmoParseError{"unsupported vertex color format"};
+                throw GmoParseError{
+                    fmt::format("unsupported vertex color format {} in chunk {}", fmt_color, array_chunk.name)};
             }
         }();
 
@@ -894,7 +897,8 @@ private:
             case eSceGuFmtNormalFLOAT:
                 return [](Reader &r) { return AssertReadFVecN<3>(r); };
             default:
-                throw GmoParseError{"unsupported vertex normal format"};
+                throw GmoParseError{
+                    fmt::format("unsupported vertex normal format {} in chunk {}", fmt_normal, array_chunk.name)};
             }
         }();
 
@@ -909,7 +913,8 @@ private:
             case eSceGuFmtVertexFLOAT:
                 return [](Reader &r) { return AssertReadFVecN<3>(r); };
             default:
-                throw GmoParseError{"unsupported vertex position format"};
+                throw GmoParseError{
+                    fmt::format("unsupported vertex position format {} in chunk {}", fmt_vertex, array_chunk.name)};
             }
         }();
 
@@ -925,7 +930,8 @@ private:
             case eSceGuFmtWeightFLOAT:
                 return []([[maybe_unused]] Reader &r) { return AssertRead<float>(r); };
             default:
-                throw GmoParseError{"unsupported vertex weight format"};
+                throw GmoParseError{
+                    fmt::format("unsupported vertex weight format {} in chunk {}", fmt_weight, array_chunk.name)};
             }
         }();
 
@@ -952,7 +958,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(mesh_chunk) != SCEGMO_MESH) {
-            throw GmoParseError{"cannot load mesh from non-mesh chunk"};
+            throw GmoParseError{fmt::format("cannot load mesh from non-mesh chunk with name {}", mesh_chunk.name)};
         }
 
         GmoMesh mesh;
@@ -984,34 +990,34 @@ private:
 
             // these calls are unsupported by the psp
             case SCEGMO_SUBDIVISION: {
-                throw GmoParseError{"SCEGMO_SUBDIVISION is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_SUBDIVISION is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_KNOT_VECTOR_U: {
-                throw GmoParseError{"SCEGMO_KNOT_VECTOR_U is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_U is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_KNOT_VECTOR_V: {
-                throw GmoParseError{"SCEGMO_KNOT_VECTOR_V is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_KNOT_VECTOR_V is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_DRAW_PARTICLE: {
-                throw GmoParseError{"SCEGMO_DRAW_PARTICLE is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_DRAW_PARTICLE is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             // i would really love to implement splines
             // but i have no models to test them on
             // feel free to send me some if you are interested!
             case SCEGMO_DRAW_B_SPLINE: {
-                throw GmoParseError{"SCEGMO_DRAW_B_SPLINE is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_DRAW_B_SPLINE is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_DRAW_RECT_MESH: {
-                throw GmoParseError{"SCEGMO_DRAW_RECT_MESH is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_DRAW_RECT_MESH is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_DRAW_RECT_PATCH: {
-                throw GmoParseError{"SCEGMO_DRAW_RECT_PATCH is unsupported"};
+                throw GmoParseError{fmt::format("SCEGMO_DRAW_RECT_PATCH is unsupported in chunk {}", mesh_chunk.name)};
             }
 
             case SCEGMO_DRAW_ARRAYS: {
@@ -1026,13 +1032,6 @@ private:
                 draw.array_id = RefIndex(native_arrays);
                 draw.num_vertices = native_num_verts;
                 draw.num_primitives = native_num_prims;
-
-                // this functionality is not needed for my purposes
-                // if you are intereset though, there is some research i did in the header file
-                // more or less what this is supposed to do is unindexed draw in a very convoluted way
-                if (GmoPrimitiveFlags::SCEGMO_PRIM_SEQUENTIAL & native_mode) {
-                    throw GmoParseError{"SCEGMO_PRIM_SEQUENTIAL is unsupported"};
-                }
 
                 switch (native_mode & GmoPrimitiveFlags::SCEGMO_PRIM_TYPE_MASK) {
                 case GmoPrimitiveFlags::SCEGMO_PRIM_POINTS:
@@ -1057,12 +1056,24 @@ private:
                     draw.primitive = GmoDrawPrimitive::eRectangles;
                     break;
                 default:
-                    throw GmoParseError{fmt::format("unsupported primitive type {}", native_mode)};
+                    throw GmoParseError{
+                        fmt::format("unsupported primitive type {} in chunk {}", native_mode, mesh_chunk.name)};
                 }
 
-                draw.indices.reserve(native_num_verts);
-                for (uint32_t i = 0; i < native_num_verts; ++i) {
-                    draw.indices.emplace_back(AssertRead<uint16_t>(reader));
+                // sequential means unindexed
+                // instead the first index will be a uint16_t representing the vertex offset to draw from
+                if (GmoPrimitiveFlags::SCEGMO_PRIM_SEQUENTIAL & native_mode) {
+                    draw.indices.reserve(native_num_verts);
+
+                    auto index = AssertRead<uint16_t>(reader);
+                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                        draw.indices.emplace_back(index++);
+                    }
+                } else {
+                    draw.indices.reserve(native_num_verts);
+                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                        draw.indices.emplace_back(AssertRead<uint16_t>(reader));
+                    }
                 }
 
                 mesh.draw_arrays.emplace_back(draw);
@@ -1070,7 +1081,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for mesh: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for mesh {} with name {}", type, mesh_chunk.name);
                 break;
             }
 
@@ -1090,7 +1101,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(part_chunk) != SCEGMO_PART) {
-            throw GmoParseError{"cannot load part from non-part chunk"};
+            throw GmoParseError{fmt::format("cannot load part from non-part chunk with name {}", part_chunk.name)};
         }
 
         GmoPart part;
@@ -1121,7 +1132,7 @@ private:
                 break;
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for part: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for part {} in chunk {}", type, part_chunk.name);
                 break;
             }
 
@@ -1135,7 +1146,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(layer_chunk) != SCEGMO_LAYER) {
-            throw GmoParseError{"cannot load layer from non-layer chunk"};
+            throw GmoParseError{fmt::format("cannot load layer from non-layer chunk with name {}", layer_chunk.name)};
         }
 
         GmoMaterialLayer layer;
@@ -1175,7 +1186,7 @@ private:
                     layer.map_type = GmoMaterialLayerMapType::eRefraction;
                     break;
                 default:
-                    GMO_DEBUG_PRINT("invalid type {} for material layer", native_type);
+                    GMO_DEBUG_PRINT("invalid type {} for material layer with name {}", native_type, layer_chunk.name);
                     break;
                 }
 
@@ -1203,21 +1214,21 @@ private:
                 if (native_mode < 6) {
                     layer.blend_op = kBlendOps[native_mode];
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend op {}", native_mode);
+                    GMO_DEBUG_PRINT("invalid blend op {} for layer {}", native_mode, layer_chunk.name);
                 }
 
                 if (native_src < 10) {
                     layer.blend_func1 = kBlendFuncs[native_src];
                     layer.src_mask = native_src > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend src {}", native_src);
+                    GMO_DEBUG_PRINT("invalid blend src {} for layer {}", native_src, layer_chunk.name);
                 }
 
                 if (native_dst < 10) {
                     layer.blend_func1 = kBlendFuncs[native_dst];
                     layer.dst_mask = native_dst > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend dst {}", native_dst);
+                    GMO_DEBUG_PRINT("invalid blend dst {} for layer {}", native_dst, layer_chunk.name);
                 }
 
                 break;
@@ -1237,7 +1248,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for layer: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for layer {} with name {}", type, layer_chunk.name);
                 break;
             }
 
@@ -1251,7 +1262,8 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(material_chunk) != SCEGMO_MATERIAL) {
-            throw GmoParseError{"cannot load material from non-material chunk"};
+            throw GmoParseError{
+                fmt::format("cannot load material from non-material chunk with name {}", material_chunk.name)};
         }
 
         GmoMaterial material;
@@ -1383,7 +1395,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for material: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for material {} with name {}", type, material_chunk.name);
                 break;
             }
 
@@ -1397,7 +1409,8 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(texture_chunk) != SCEGMO_TEXTURE) {
-            throw GmoParseError{"cannot load texture from non-texture chunk"};
+            throw GmoParseError{
+                fmt::format("cannot load texture from non-texture chunk with name {}", texture_chunk.name)};
         }
 
         GmoTexture texture;
@@ -1432,15 +1445,19 @@ private:
                 const auto read_buffer = reader.ReadBuffer(size);
 
                 if (!read_buffer.has_value()) {
-                    throw GmoParseError{fmt::format("cannot read {} bytes for texture data", size)};
+                    throw GmoParseError{fmt::format(
+                        "cannot read {} bytes for texture data in texture chunk {}", size, texture_chunk.name)};
                 }
 
+                GMO_DEBUG_PRINT(
+                    "gmo texture chunk {} has binary texture in +{}, sized {}", texture_chunk.name,
+                    GetChunkArgsOffset(chunk), size);
                 texture.data.assign(read_buffer->begin(), read_buffer->end());
                 break;
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for texture: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for texture {} with name {}", type, texture_chunk.name);
                 break;
             }
 
@@ -1454,7 +1471,8 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(fcurve_chunk) != SCEGMO_FCURVE) {
-            throw GmoParseError{"cannot load fcurve from non-fcurve chunk"};
+            throw GmoParseError{
+                fmt::format("cannot load fcurve from non-fcurve chunk with name {}", fcurve_chunk.name)};
         }
 
         GmoFCurve fcurve;
@@ -1492,7 +1510,7 @@ private:
             break;
 
         default:
-            GMO_DEBUG_PRINT("invalid fcurve interpolation type {}", interpolation);
+            GMO_DEBUG_PRINT("invalid fcurve interpolation type {} in fcurve {}", interpolation, fcurve_chunk.name);
             fcurve.interpolation = GmoFCurveInterpolation::eConstant;
             break;
         }
@@ -1508,7 +1526,8 @@ private:
 
         const auto buffer = reader.ReadBuffer(total_size_bytes);
         if (!buffer.has_value()) {
-            throw GmoParseError{"invalid fcurve data block, not enough data!"};
+            throw GmoParseError{
+                fmt::format("invalid fcurve data block in fcurve {}, not enough data!", fcurve_chunk.name)};
         }
 
         // TODO: endianness?
@@ -1522,7 +1541,8 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(motion_chunk) != SCEGMO_MOTION) {
-            throw GmoParseError{"cannot load motion from non-motion chunk"};
+            throw GmoParseError{
+                fmt::format("cannot load motion from non-motion chunk with name {}", motion_chunk.name)};
         }
 
         GmoMotion motion;
@@ -1573,7 +1593,7 @@ private:
                     break;
 
                 default:
-                    GMO_DEBUG_PRINT("invalid animate target type {}", ref_type);
+                    GMO_DEBUG_PRINT("invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
                     break;
                 }
 
@@ -1656,7 +1676,7 @@ private:
 
                 default:
                     anim.property = static_cast<GmoAnimationProperty>(native_cmd);
-                    GMO_DEBUG_PRINT("using custom property for animation {}", native_cmd);
+                    GMO_DEBUG_PRINT("using custom property for animation {} for motion {}", native_cmd, motion.name);
                     break;
                 }
 
@@ -1665,7 +1685,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for motion: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for motion {} with name {}", type, motion_chunk.name);
                 break;
             }
 
@@ -1679,7 +1699,7 @@ private:
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(model_chunk) != SCEGMO_MODEL) {
-            throw GmoParseError{"cannot load model from non-model chunk"};
+            throw GmoParseError{fmt::format("cannot load model from non-model chunk with name {}", model_chunk.name)};
         }
 
         const auto num_bone_chunks = CountChildrenOfType(model_chunk, SCEGMO_BONE);
@@ -1743,7 +1763,7 @@ private:
                 throw GmoParseError{fmt::format("SCEGMO_VERTEX_OFFSET is unsupported")};
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for model: {}", type);
+                GMO_DEBUG_PRINT("skipping chunk type for model {} with name {}", type, model_chunk.name);
                 break;
             }
 
