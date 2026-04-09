@@ -56,6 +56,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
+    ${PROGRAM_SRC_DIR}/formats/gxt.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES_LIST})

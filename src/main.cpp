@@ -3,9 +3,12 @@
 #include <vector>
 
 #include <fmt/format.h>
+#include <stb_image_write/stb_image_write.h>
 
 #include "formats/gmo.hpp"
 #include "formats/gmostring.hpp"
+
+#include "formats/gxt.hpp"
 
 template <typename T> auto PrintVector(const T &v, size_t n) -> void {
     fmt::print("{}", '{');
@@ -136,11 +139,11 @@ auto LoadBinaryFile(const std::string &path) -> std::vector<uint8_t> {
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
-    const auto model_data = LoadBinaryFile("samples/chr50_04_01_1.gxx");
+    const auto model_data = LoadBinaryFile("samples/chr01_01_01_1.gxx.gmo");
     const auto image_data = LoadBinaryFile("samples/chr50_04_01_1.gxt");
 
     try {
-        const auto model = gmo::LoadModelFromMemory(model_data);
+        /*const auto model = gmo::LoadModelFromMemory(model_data);
         fmt::println("done: {}", model.size());
 
         DebugPrintArrays(model.front());
@@ -149,7 +152,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
         const auto &tex = model.front().textures[0].data;
         ofs.write(reinterpret_cast<const char *>(tex.data()), tex.size());
 
-        fmt::println("written {} bytes", tex.size());
+        fmt::println("written {} bytes", tex.size());*/
+
+        const auto tex = gxt::LoadBitmaps(image_data);
+        fmt::println("num textures: {}", tex.size());
+
+        const auto &bm = tex.front();
+        stbi_write_png("png.png", bm.width, bm.height, 4, bm.rgba_plane.data(), bm.width * sizeof(uint32_t));
     } catch (const std::exception &e) {
         fmt::println(stderr, "fatal error: {}", e.what());
         return EXIT_FAILURE;
