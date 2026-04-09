@@ -1461,11 +1461,59 @@ private:
         fcurve.name = fcurve_chunk.name;
 
         AssertSeek(reader, GetChunkArgsOffset(fcurve_chunk));
-        uint32_t native_format = AssertRead<uint32_t>(reader);
-        uint32_t native_num_dims = AssertRead<uint32_t>(reader);
-        uint32_t native_num_keys = AssertRead<uint32_t>(reader);
+        const auto native_format = AssertRead<uint32_t>(reader);
+        const auto native_num_dims = AssertRead<uint32_t>(reader);
+        const auto native_num_keys = AssertRead<uint32_t>(reader);
 
         (void)AssertRead<uint32_t>(reader); // unused
+
+        constexpr std::array<uint32_t, 5> kElementsPerInterpType = {1, 1, 3, 5, 1};
+        const auto interpolation = native_format & SCEGMO_FCURVE_INTERP_MASK;
+
+        switch (interpolation) {
+        case SCEGMO_FCURVE_CONSTANT:
+            fcurve.interpolation = GmoFCurveInterpolation::eConstant;
+            break;
+
+        case SCEGMO_FCURVE_LINEAR:
+            fcurve.interpolation = GmoFCurveInterpolation::eLinear;
+            break;
+
+        case SCEGMO_FCURVE_HERMITE:
+            fcurve.interpolation = GmoFCurveInterpolation::eHermite;
+            break;
+
+        case SCEGMO_FCURVE_CUBIC:
+            fcurve.interpolation = GmoFCurveInterpolation::eCubic;
+            break;
+
+        case SCEGMO_FCURVE_SPHERICAL:
+            fcurve.interpolation = GmoFCurveInterpolation::eSpherical;
+            break;
+
+        default:
+            GMO_DEBUG_PRINT("invalid fcurve interpolation type {}", interpolation);
+            fcurve.interpolation = GmoFCurveInterpolation::eConstant;
+            break;
+        }
+
+        fcurve.dimensions = native_num_dims;
+        fcurve.num_keyframes = native_num_keys;
+
+        const auto num_elements = kElementsPerInterpType[static_cast<uint32_t>(fcurve.interpolation)];
+        const auto stride = num_elements * native_num_dims + 1;
+
+        const auto total_size = stride * native_num_keys;
+        const auto total_size_bytes = sizeof(float) * total_size;
+
+        const auto buffer = reader.ReadBuffer(total_size_bytes);
+        if (!buffer.has_value()) {
+            throw GmoParseError{"invalid fcurve data block, not enough data!"};
+        }
+
+        // TODO: endianness?
+        fcurve.raw_data.resize(total_size);
+        std::memcpy(fcurve.raw_data.data(), buffer->data(), total_size_bytes);
 
         return fcurve;
     }
@@ -1512,6 +1560,7 @@ private:
 
                 anim.fcurve_id = RefIndex(native_fcurve);
                 anim.index = native_index;
+                anim.target_id = RefIndex(native_block);
 
                 const auto ref_type = RefType(native_block);
                 switch (ref_type) {

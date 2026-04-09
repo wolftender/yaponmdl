@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 
 #include "formats/gmo.hpp"
+#include "formats/gmostring.hpp"
 
 template <typename T> auto PrintVector(const T &v, size_t n) -> void {
     fmt::print("{}", '{');
@@ -85,6 +86,38 @@ auto DebugPrintArrays(const gmo::GmoModel &model) -> void {
     }
 }
 
+auto DebugPrintFcurves(const gmo::GmoModel &model) -> void {
+    for (const auto &motion : model.motions) {
+        fmt::println("motion {}", motion.name);
+        fmt::println("  frame loop: {} - {}", motion.frame_loop_start, motion.frame_loop_end);
+        fmt::println("  framerate: {}", motion.framerate);
+
+        for (const auto &anim : motion.animations) {
+            fmt::println(
+                "    anim n={} prop={} t={} tid={}", anim.name, gmo::ToString(anim.property),
+                gmo::ToString(anim.target), anim.target_id);
+        }
+
+        for (const auto &fcurve : motion.fcurves) {
+            fmt::println(
+                "    fcurve n={} dim={}, int={}, frames={}", fcurve.name, fcurve.dimensions,
+                gmo::ToString(fcurve.interpolation), fcurve.num_keyframes);
+
+            constexpr std::array<uint32_t, 5> kNumElements = {1, 1, 3, 5, 1};
+            const auto stride = kNumElements[static_cast<uint32_t>(fcurve.interpolation)] * fcurve.dimensions + 1;
+
+            uint32_t i = 0;
+            for (uint32_t f = 0; f < fcurve.num_keyframes; ++f) {
+                fmt::print("      ");
+                for (uint32_t d = 0; d < stride; ++d) {
+                    fmt::print("{} ", fcurve.raw_data[i++]);
+                }
+                fmt::print("\n");
+            }
+        }
+    }
+}
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
     std::fstream fs{"samples/chr01_01_01_1.gxx.gmo", std::ios::binary | std::ios::in};
     if (!fs.good()) {
@@ -105,6 +138,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv) {
         fmt::println("done: {}", model.size());
 
         DebugPrintArrays(model.front());
+        DebugPrintFcurves(model.front());
     } catch (const std::exception &e) {
         fmt::println(stderr, "failed to load model: {}", e.what());
         return EXIT_FAILURE;

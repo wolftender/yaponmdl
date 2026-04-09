@@ -304,12 +304,34 @@ struct GmoAnimation {
     std::string name;
     uint32_t fcurve_id;
     GmoAnimationTarget target;
+    uint32_t target_id;
     GmoAnimationProperty property;
     uint32_t index;
 };
 
+enum class GmoFCurveInterpolation : uint32_t {
+    eConstant = 0,
+    eLinear = 1,
+    eHermite = 2,
+    eCubic = 3,
+    eSpherical = 4,
+};
+
 struct GmoFCurve {
     std::string name;
+    uint32_t dimensions;
+    uint32_t num_keyframes;
+
+    GmoFCurveInterpolation interpolation;
+
+    /// data is stored in the same format as in GMO fcurve
+    /// that is
+    /// [time] [value]
+    /// you can calculate the stride with this formula:
+    ///  num_elements = {1, 1, 3, 5, 1}[interpolation];
+    ///  stride = num_elements * dimensions + 1;
+    ///
+    std::vector<float> raw_data;
 };
 
 struct GmoMotion {
