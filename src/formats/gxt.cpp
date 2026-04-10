@@ -178,7 +178,8 @@ auto LoadBitmaps(std::span<const uint8_t> buffer, const GxtLogger *logger) -> st
     const auto image_info_size = AssertReadAt<uint32_t>(reader, image_info_offset + 0x04);
     const auto image_swizzle = AssertReadAt<uint8_t>(reader, image_info_offset + 0x40);
     const auto image_palette_type = AssertReadAt<uint8_t>(reader, image_info_offset + image_info_size + 0x38);
-    const auto image_palette_offset = AssertReadAt<uint16_t>(reader, image_info_offset + image_info_size + 0x34);
+    const auto image_palette_offset =
+        AssertReadAt<uint32_t>(reader, image_info_offset + image_info_size + 0x34) & 0x00ffffff;
     const auto image_width = AssertReadAt<uint32_t>(reader, image_param_offset + 0x20);
     const auto image_height = AssertReadAt<uint32_t>(reader, image_param_offset + 0x24);
     const auto image_plane_offset = image_palette_offset - 0x40 - image_plane_size;
