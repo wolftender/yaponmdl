@@ -373,14 +373,20 @@ struct GmoModel {
     Rect<float> texture_offset = {{0.0f, 0.0f}, {0.0f, 0.0f}};
 };
 
+class GmoLogger {
+public:
+    virtual ~GmoLogger() = default;
+    virtual auto log(std::string_view log_message) const -> void = 0;
+};
+
 /**
  * @brief Load GMO models from the binary file
  *
  * @param buffer binary buffer to load from
  * @return std::vector<GmoModel> list of GMO models loaded from the file
  */
-auto LoadModelFromMemory(std::span<const uint8_t> buffer) -> std::vector<GmoModel>;
+auto LoadModelFromMemory(std::span<const uint8_t> buffer, const GmoLogger *logger = nullptr) -> std::vector<GmoModel>;
 
-auto CheckHeader(std::span<const uint8_t> buffer) -> bool;
+auto CheckHeader(std::span<const uint8_t> buffer, const GmoLogger *logger = nullptr) -> bool;
 
 } // namespace gmo

@@ -35,6 +35,8 @@ private:
     auto OnOpenFile(wxCommandEvent &event) -> void;
     auto OnOpenDirectory(wxCommandEvent &event) -> void;
 
+    auto OnShowLogWindow(wxCommandEvent &event) -> void;
+
     auto OnFileSelected(wxCommandEvent &event) -> void;
 
     wxSplitterWindow *splitter_ = nullptr;
@@ -43,6 +45,7 @@ private:
 
     std::vector<uint8_t> current_file_;
 
+    wxLogWindow *log_window_ = nullptr;
     DirectoryViewControl *dir_control_ = nullptr;
     HexViewer *hex_viewer_ = nullptr;
 };

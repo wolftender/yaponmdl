@@ -86,6 +86,7 @@ private:
 protected:
     virtual auto StartContext() const -> void = 0;
     virtual auto EndContext() const -> void = 0;
+    virtual auto LogMessage(std::string_view message) const -> void = 0;
 
 public:
     class Executor final {
@@ -126,7 +127,13 @@ public:
             }
         }
 
-        static auto thread_has_context() -> bool { return s_controller != nullptr; }
+        static auto ThreadHasContext() -> bool { return s_controller != nullptr; }
+
+        static auto LogMessage(std::string_view message) {
+            if (ThreadHasContext()) {
+                s_controller->GetContext().LogMessage(message);
+            }
+        }
 
     private:
         Executor(std::thread::id owner_thread, std::weak_ptr<Controller> controller)
@@ -155,7 +162,7 @@ public:
 
 // use this macro in every function that asserts opengl is used but does not explicitly run on an executor
 #define GL_IMPLEMENTATION_INTERNAL                                                                                     \
-    assert(gl::GLContext::Executor::thread_has_context() && "this thread does not have an active gl context");
+    assert(gl::GLContext::Executor::ThreadHasContext() && "this thread does not have an active gl context");
 
 #ifdef NDEBUG
 #define GL_CHECK(...) (__VA_ARGS__)
@@ -169,22 +176,28 @@ public:
             case GL_NO_ERROR:                                                                                          \
                 return false;                                                                                          \
             case GL_INVALID_ENUM:                                                                                      \
-                fmt::println("OpenGL error {}: GL_INVALID_ENUM at {}", error_code, #__VA_ARGS__);                      \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: GL_INVALID_ENUM at {}", error_code, #__VA_ARGS__));                  \
                 return true;                                                                                           \
             case GL_INVALID_VALUE:                                                                                     \
-                fmt::println("OpenGL error {}: GL_INVALID_VALUE at {}", error_code, #__VA_ARGS__);                     \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: GL_INVALID_VALUE at {}", error_code, #__VA_ARGS__));                 \
                 return true;                                                                                           \
             case GL_INVALID_OPERATION:                                                                                 \
-                fmt::println("OpenGL error {}: GL_INVALID_OPERATION at {}", error_code, #__VA_ARGS__);                 \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: GL_INVALID_OPERATION at {}", error_code, #__VA_ARGS__));             \
                 return true;                                                                                           \
             case GL_INVALID_FRAMEBUFFER_OPERATION:                                                                     \
-                fmt::println("OpenGL error {}: GL_INVALID_FRAMEBUFFER_OPERATION at {}", error_code, #__VA_ARGS__);     \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: GL_INVALID_FRAMEBUFFER_OPERATION at {}", error_code, #__VA_ARGS__)); \
                 return true;                                                                                           \
             case GL_OUT_OF_MEMORY:                                                                                     \
-                fmt::println("OpenGL error {}: GL_OUT_OF_MEMORY at {}", error_code, #__VA_ARGS__);                     \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: GL_OUT_OF_MEMORY at {}", error_code, #__VA_ARGS__));                 \
                 return true;                                                                                           \
             default:                                                                                                   \
-                fmt::println("OpenGL error {}: Unknown at {}", error_code, #__VA_ARGS__);                              \
+                gl::GLContext::Executor::LogMessage(                                                                   \
+                    fmt::format("OpenGL error {}: Unknown at {}", error_code, #__VA_ARGS__));                          \
                 return true;                                                                                           \
             }                                                                                                          \
         };                                                                                                             \

@@ -12,6 +12,7 @@ public:
     protected:
         auto StartContext() const -> void override;
         auto EndContext() const -> void override;
+        auto LogMessage(std::string_view message) const -> void override;
 
     public:
         friend class GLView;

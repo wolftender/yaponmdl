@@ -9,6 +9,11 @@ auto GLView::Context::StartContext() const -> void {
 }
 
 auto GLView::Context::EndContext() const -> void {}
+
+auto GLView::Context::LogMessage(std::string_view message) const -> void {
+    wxLogMessage(wxString(message.data(), message.size()));
+}
+
 auto GLView::Context::GetOwnerThread() const -> std::thread::id { return owner_thread_; }
 auto GLView::Context::IsContextThread() const -> bool { return std::this_thread::get_id() == owner_thread_; }
 auto GLView::Context::HasExtension([[maybe_unused]] std::string_view extension) const -> bool { return false; }
@@ -96,7 +101,7 @@ auto GLView::InitializeOpenGL() -> void {
     }
 
     context_->Finalize();
-    OnInitializeGL();
+    context_->GetExecutor().RunOnContext([&]([[maybe_unused]] gl::GLContext &) { OnInitializeGL(); });
 }
 
 auto GLView::OnPaint([[maybe_unused]] wxPaintEvent &event) -> void {

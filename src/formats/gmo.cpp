@@ -10,7 +10,7 @@
 namespace gmo {
 
 #ifndef NDEBUG
-#define GMO_DEBUG_PRINT(f, ...) fmt::println(stdout, f, __VA_ARGS__)
+#define GMO_DEBUG_PRINT(logger, f, ...) logger.log(fmt::format(f, __VA_ARGS__))
 #else
 #define GMO_DEBUG_PRINT(fmt, ...)
 #endif
@@ -88,7 +88,7 @@ auto AssertSeek(util::bytes::BinaryReader &reader, uint64_t position) -> void {
  * @param reader
  * @return GmoHeader
  */
-auto GetGmoHeader(util::bytes::BinaryReader &reader) -> GmoHeader {
+auto GetGmoHeader(const GmoLogger &logger, util::bytes::BinaryReader &reader) -> GmoHeader {
     GmoHeader header = {};
     header.signature = AssertRead<uint32_t>(reader, "invalid header");
     header.version = AssertRead<uint32_t>(reader, "invalid header");
@@ -108,6 +108,7 @@ auto GetGmoHeader(util::bytes::BinaryReader &reader) -> GmoHeader {
     }
 
     GMO_DEBUG_PRINT(
+        logger,
         "gmo header check: \n\tsignature:\t{:#010x}\n\tversion:\t{:#010x}\n\tstyle:\t\t{:#010x}\n\toption:\t\t{:#010x}",
         header.signature, header.version, header.style, header.option);
 
@@ -504,16 +505,16 @@ auto CountChunks(const util::bytes::BinaryReader &parent_reader) -> uint32_t {
  */
 class GmoLoaderContext final {
 public:
-    GmoLoaderContext(std::span<const uint8_t> buffer) : buffer_{buffer} {
+    GmoLoaderContext(const GmoLogger &logger, std::span<const uint8_t> buffer) : logger_{logger}, buffer_{buffer} {
         util::bytes::BinaryReader reader{buffer};
-        (void)GetGmoHeader(reader);
+        (void)GetGmoHeader(logger_, reader);
 
         // realistically, we don't need to count the chunks
         // but it is done here anyways to validate the file
         // also this allows to reduce the number of reallocs
         const auto num_chunks = CountChunks(reader);
 
-        GMO_DEBUG_PRINT("detected gmo structure with {} chunks", num_chunks);
+        GMO_DEBUG_PRINT(logger_, "detected gmo structure with {} chunks", num_chunks);
         map_.reserve(num_chunks);
 
         // initialize the chunk tree
@@ -745,12 +746,12 @@ private:
                 const auto unknown0 = AssertRead<uint32_t>(reader);
                 const auto unknown1 = AssertRead<uint32_t>(reader);
 
-                GMO_DEBUG_PRINT("type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
                 break;
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for bone {} with name {}", type, bone_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for bone {} with name {}", type, bone_chunk.name);
                 break;
             }
 
@@ -825,6 +826,7 @@ private:
         array.num_weights = num_weights;
 
         GMO_DEBUG_PRINT(
+            logger_,
             "load vertex array:\n"
             "\tfmt_texture:\t\t{}\n"
             "\tfmt_color:\t\t{}\n"
@@ -1081,7 +1083,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for mesh {} with name {}", type, mesh_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for mesh {} with name {}", type, mesh_chunk.name);
                 break;
             }
 
@@ -1132,7 +1134,7 @@ private:
                 break;
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for part {} in chunk {}", type, part_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for part {} in chunk {}", type, part_chunk.name);
                 break;
             }
 
@@ -1186,7 +1188,8 @@ private:
                     layer.map_type = GmoMaterialLayerMapType::eRefraction;
                     break;
                 default:
-                    GMO_DEBUG_PRINT("invalid type {} for material layer with name {}", native_type, layer_chunk.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "invalid type {} for material layer with name {}", native_type, layer_chunk.name);
                     break;
                 }
 
@@ -1214,21 +1217,21 @@ private:
                 if (native_mode < 6) {
                     layer.blend_op = kBlendOps[native_mode];
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend op {} for layer {}", native_mode, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend op {} for layer {}", native_mode, layer_chunk.name);
                 }
 
                 if (native_src < 10) {
                     layer.blend_func1 = kBlendFuncs[native_src];
                     layer.src_mask = native_src > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend src {} for layer {}", native_src, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend src {} for layer {}", native_src, layer_chunk.name);
                 }
 
                 if (native_dst < 10) {
                     layer.blend_func1 = kBlendFuncs[native_dst];
                     layer.dst_mask = native_dst > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend dst {} for layer {}", native_dst, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend dst {} for layer {}", native_dst, layer_chunk.name);
                 }
 
                 break;
@@ -1248,7 +1251,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for layer {} with name {}", type, layer_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for layer {} with name {}", type, layer_chunk.name);
                 break;
             }
 
@@ -1395,7 +1398,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for material {} with name {}", type, material_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for material {} with name {}", type, material_chunk.name);
                 break;
             }
 
@@ -1450,14 +1453,14 @@ private:
                 }
 
                 GMO_DEBUG_PRINT(
-                    "gmo texture chunk {} has binary texture in +{}, sized {}", texture_chunk.name,
+                    logger_, "gmo texture chunk {} has binary texture in +{}, sized {}", texture_chunk.name,
                     GetChunkArgsOffset(chunk), size);
                 texture.data.assign(read_buffer->begin(), read_buffer->end());
                 break;
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for texture {} with name {}", type, texture_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for texture {} with name {}", type, texture_chunk.name);
                 break;
             }
 
@@ -1510,7 +1513,8 @@ private:
             break;
 
         default:
-            GMO_DEBUG_PRINT("invalid fcurve interpolation type {} in fcurve {}", interpolation, fcurve_chunk.name);
+            GMO_DEBUG_PRINT(
+                logger_, "invalid fcurve interpolation type {} in fcurve {}", interpolation, fcurve_chunk.name);
             fcurve.interpolation = GmoFCurveInterpolation::eConstant;
             break;
         }
@@ -1593,7 +1597,8 @@ private:
                     break;
 
                 default:
-                    GMO_DEBUG_PRINT("invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
                     break;
                 }
 
@@ -1676,7 +1681,8 @@ private:
 
                 default:
                     anim.property = static_cast<GmoAnimationProperty>(native_cmd);
-                    GMO_DEBUG_PRINT("using custom property for animation {} for motion {}", native_cmd, motion.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "using custom property for animation {} for motion {}", native_cmd, motion.name);
                     break;
                 }
 
@@ -1685,7 +1691,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for motion {} with name {}", type, motion_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for motion {} with name {}", type, motion_chunk.name);
                 break;
             }
 
@@ -1709,6 +1715,7 @@ private:
         const auto num_motion_chunks = CountChildrenOfType(model_chunk, SCEGMO_MOTION);
 
         GMO_DEBUG_PRINT(
+            logger_,
             "validated gmo "
             "model:\n\tbones:\t\t{}\n\tparts:\t\t{}\n\tmaterials:\t{}\n\ttextures:\t{}\n\tmotions:\t{}",
             num_bone_chunks, num_part_chunks, num_material_chunks, num_texture_chunks, num_motion_chunks);
@@ -1763,7 +1770,7 @@ private:
                 throw GmoParseError{fmt::format("SCEGMO_VERTEX_OFFSET is unsupported")};
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for model {} with name {}", type, model_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for model {} with name {}", type, model_chunk.name);
                 break;
             }
 
@@ -1877,19 +1884,38 @@ private:
         }
     }
 
+    const GmoLogger &logger_;
+
     std::span<const uint8_t> buffer_;
     std::vector<GmoChunk> map_;
 };
 
-std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer) {
-    GmoLoaderContext context{buffer};
+class GmoConsoleLogger final : public GmoLogger {
+public:
+    auto log(std::string_view log_message) const -> void override {
+        fmt::println("[libgmo console log] {}", log_message);
+    }
+};
+
+std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer, const GmoLogger *logger) {
+    GmoConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    GmoLoaderContext context{*logger, buffer};
     return context.LoadAllModels();
 }
 
-auto CheckHeader(std::span<const uint8_t> buffer) -> bool {
+auto CheckHeader(std::span<const uint8_t> buffer, const GmoLogger *logger) -> bool {
+    GmoConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
     util::bytes::BinaryReader reader{buffer};
     try {
-        (void)GetGmoHeader(reader);
+        (void)GetGmoHeader(*logger, reader);
     } catch (const std::exception &) {
         return false;
     }

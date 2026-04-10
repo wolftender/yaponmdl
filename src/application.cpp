@@ -9,6 +9,7 @@
 enum MenuCommand {
     eMenuCommandFileOpenFile,
     eMenuCommandFileOpenDirectory,
+    eMenuCommandViewShowLogs,
 };
 
 DirectoryViewControl::DirectoryViewControl(
@@ -56,12 +57,20 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_file->AppendSeparator();
     menu_file->Append(wxID_EXIT);
 
+    wxMenu *menu_view = new wxMenu;
+    menu_view->Append(eMenuCommandViewShowLogs, "&Show logs", "Displays the log window");
+
     wxMenu *menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
 
     wxMenuBar *menu_bar = new wxMenuBar;
     menu_bar->Append(menu_file, "&File");
+    menu_bar->Append(menu_view, "&View");
     menu_bar->Append(menu_help, "&Help");
+
+    log_window_ = new wxLogWindow(nullptr, "Log window", false, false);
+    wxLog::SetActiveTarget(log_window_);
+    log_window_->Show(false);
 
     SetMenuBar(menu_bar);
     CreateStatusBar();
@@ -92,6 +101,7 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenDirectory, this, eMenuCommandFileOpenDirectory);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLogWindow, this, eMenuCommandViewShowLogs);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
@@ -119,8 +129,8 @@ auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void 
 }
 
 auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {}
-
 auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {}
+auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();

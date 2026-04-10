@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <span>
+#include <string_view>
 
 namespace gxt {
 
@@ -12,7 +13,13 @@ struct GxtImageBitmap {
     std::vector<uint8_t> rgba_plane;
 };
 
-auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>;
-auto CheckHeader(std::span<const uint8_t> buffer) -> bool;
+class GxtLogger {
+public:
+    virtual ~GxtLogger() = default;
+    virtual auto log(std::string_view log_message) const -> void = 0;
+};
+
+auto LoadBitmaps(std::span<const uint8_t> buffer, const GxtLogger *logger = nullptr) -> std::vector<GxtImageBitmap>;
+auto CheckHeader(std::span<const uint8_t> buffer, const GxtLogger *logger = nullptr) -> bool;
 
 } // namespace gxt

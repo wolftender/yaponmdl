@@ -1,6 +1,9 @@
 #include "textureview.hpp"
 
-auto TextureViewer::OnInitializeGL() -> void {}
+auto TextureViewer::OnInitializeGL() -> void {
+    GL_IMPLEMENTATION_INTERNAL;
+    GL_CHECK(glEnable(GL_BLEND));
+}
 
 auto TextureViewer::OnRender() -> void {
     GL_IMPLEMENTATION_INTERNAL;

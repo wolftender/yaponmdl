@@ -139,7 +139,19 @@ auto ImageDecode(
     return rgba_plane;
 }
 
-auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap> {
+class GxtConsoleLogger final : public GxtLogger {
+public:
+    auto log(std::string_view log_message) const -> void override {
+        fmt::println("[libgxt console log] {}", log_message);
+    }
+};
+
+auto LoadBitmaps(std::span<const uint8_t> buffer, const GxtLogger *logger) -> std::vector<GxtImageBitmap> {
+    GxtConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
     util::bytes::BinaryReader reader{buffer};
     const auto header = ReadHeader(reader);
 
@@ -147,13 +159,14 @@ auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>
         throw GxtParseError{"invalid gxt file"};
     }
 
-    fmt::println(
-        "gxt file header:\n"
-        "\tmagic: {:#010x}\n"
-        "\tversion: {:#010x}\n"
-        "\tstyle: {:#010x}\n"
-        "\toption: {:#010x}\n",
-        header.magic, header.version, header.style, header.option);
+    logger->log(
+        fmt::format(
+            "gxt file header:\n"
+            "\tmagic: {:#010x}\n"
+            "\tversion: {:#010x}\n"
+            "\tstyle: {:#010x}\n"
+            "\toption: {:#010x}\n",
+            header.magic, header.version, header.style, header.option));
 
     constexpr uint64_t kOffsetImageParamOffset = 0x10;
     constexpr uint64_t kOffsetImageInfoOffset = 0x28;
@@ -215,7 +228,7 @@ auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>
     return {bitmap};
 }
 
-auto CheckHeader(std::span<const uint8_t> buffer) -> bool {
+auto CheckHeader(std::span<const uint8_t> buffer, [[maybe_unused]] const GxtLogger *logger) -> bool {
     util::bytes::BinaryReader reader{buffer};
     try {
         const auto header = ReadHeader(reader);
