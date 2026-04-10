@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 project(yaponmdl VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if (MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "/O2 /EHsc /Zi")
@@ -32,6 +33,9 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glm fmt)
 
+# wxwidgets
+find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc)
+
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
     NOMINMAX
@@ -52,14 +56,33 @@ set(PROGRAM_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 add_library(thirdparty OBJECT ${PROGRAM_SRC_DIR}/thirdparty.cpp)
 
 set(SOURCES_LIST
-    ${PROGRAM_SRC_DIR}/main.cpp
+    ${PROGRAM_SRC_DIR}/application.cpp
+    ${PROGRAM_SRC_DIR}/hexview.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES_LIST})
+if(WIN32)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES_LIST})
+else()
+    add_executable(${PROJECT_NAME} ${SOURCES_LIST})
+endif()
+
+if(WIN32)
+    if(MSVC)
+        set(SUBSYSTEM_LINKER_OPTIONS 
+            /SUBSYSTEM:WINDOWS
+            /ENTRY:mainCRTStartup
+        )
+    else()
+        set(SUBSYSTEM_LINKER_OPTIONS
+            -Wl,/subsystem:windows
+            -Wl,/entry:mainCRTStartup
+        )
+    endif()
+endif()
 
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
@@ -73,4 +96,4 @@ else()
     target_compile_options(thirdparty PRIVATE -w)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> fmt glm)
+target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> fmt glm wx::core wx::base wx::stc)

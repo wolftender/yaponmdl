@@ -1886,4 +1886,15 @@ std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer) {
     return context.LoadAllModels();
 }
 
+auto CheckHeader(std::span<const uint8_t> buffer) -> bool {
+    util::bytes::BinaryReader reader{buffer};
+    try {
+        (void)GetGmoHeader(reader);
+    } catch (const std::exception &) {
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace gmo

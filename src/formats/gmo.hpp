@@ -379,6 +379,8 @@ struct GmoModel {
  * @param buffer binary buffer to load from
  * @return std::vector<GmoModel> list of GMO models loaded from the file
  */
-std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer);
+auto LoadModelFromMemory(std::span<const uint8_t> buffer) -> std::vector<GmoModel>;
+
+auto CheckHeader(std::span<const uint8_t> buffer) -> bool;
 
 } // namespace gmo

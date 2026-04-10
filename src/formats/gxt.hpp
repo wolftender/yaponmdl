@@ -13,5 +13,6 @@ struct GxtImageBitmap {
 };
 
 auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>;
+auto CheckHeader(std::span<const uint8_t> buffer) -> bool;
 
 } // namespace gxt

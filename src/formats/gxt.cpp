@@ -215,4 +215,15 @@ auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>
     return {bitmap};
 }
 
+auto CheckHeader(std::span<const uint8_t> buffer) -> bool {
+    util::bytes::BinaryReader reader{buffer};
+    try {
+        (void)ReadHeader(reader);
+    } catch (const std::exception &) {
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace gxt
