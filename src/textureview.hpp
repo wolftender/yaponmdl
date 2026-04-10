@@ -33,6 +33,7 @@ protected:
     auto OnRender() -> void override;
 
     auto OnIdle(wxIdleEvent &event) -> void;
+    auto OnMouseScroll(wxMouseEvent &event) -> void;
 
 private:
     enum class State {
@@ -42,6 +43,7 @@ private:
         eReady,
     };
 
+    float zoom_ = 1.0f;
     std::span<const uint8_t> gxt_buffer_;
     std::optional<gl::ShaderProgram> shader_texture_;
     std::optional<gl::ShaderProgram> shader_background_;

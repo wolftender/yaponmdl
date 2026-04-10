@@ -18,6 +18,7 @@ public:
 TextureViewer::TextureViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gxt_buffer)
     : GLView{parent, attributes}, gxt_buffer_{gxt_buffer} {
     Bind(wxEVT_IDLE, &TextureViewer::OnIdle, this);
+    Bind(wxEVT_MOUSEWHEEL, &TextureViewer::OnMouseScroll, this);
 }
 
 auto TextureViewer::OnInitializeGL() -> void {
@@ -107,20 +108,21 @@ auto TextureViewer::OnRender() -> void {
 
     const glm::fmat4x4 identity = glm::fmat4x4{1.0f};
     const auto aspect = static_cast<float>(current_size.x) / static_cast<float>(current_size.y);
+    const auto tex_aspect = static_cast<float>(texture_->GetWidth()) / static_cast<float>(texture_->GetHeight());
 
     shader_background_->Use([&](const gl::ShaderProgram::Context &program_context) {
         program_context.SetUniform("u_view_projection", identity);
         program_context.SetUniform("u_divisions", static_cast<float>(current_size.y) / 30.0f);
-        program_context.SetUniform("u_color1", glm::fvec3{0.25f, 0.25f, 0.25f});
-        program_context.SetUniform("u_color2", glm::fvec3{0.75f, 0.75f, 0.75f});
+        program_context.SetUniform("u_color1", glm::fvec3{0.33f, 0.33f, 0.33f});
+        program_context.SetUniform("u_color2", glm::fvec3{0.66f, 0.66f, 0.66f});
         program_context.SetUniform("u_aspect", aspect);
         mesh_->Draw();
     });
 
     // clang-format off
     const glm::fmat4x4 aspect_fix = glm::fmat4x4{
-        1.0f / aspect, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
+        1.0f / aspect * tex_aspect * zoom_, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f * zoom_, 0.0f, 0.0f,
         0.0f , 0.0f, 1.0f, 0.0f,
         0.0f , 0.0f, 0.0f, 1.0f,
     };
@@ -135,3 +137,8 @@ auto TextureViewer::OnRender() -> void {
 }
 
 auto TextureViewer::OnIdle([[maybe_unused]] wxIdleEvent &event) -> void { Render(); }
+
+auto TextureViewer::OnMouseScroll(wxMouseEvent &event) -> void {
+    auto delta = event.GetWheelRotation() / event.GetWheelDelta();
+    zoom_ = glm::clamp(zoom_ + (delta) * 0.05f, 0.2f, 10.0f);
+}
