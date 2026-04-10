@@ -23,6 +23,7 @@ HexViewer::HexViewer(
     text_control_->SetScrollWidthTracking(false);
     text_control_->SetUseHorizontalScrollBar(false);
     text_control_->SetUseVerticalScrollBar(false);
+    text_control_->SetCaretWidth(0);
 
     scroll_bar_ = new wxScrollBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSB_VERTICAL);
 
@@ -32,6 +33,8 @@ HexViewer::HexViewer(
 
     text_control_->Bind(wxEVT_SIZE, &HexViewer::OnTextControlSize, this);
     text_control_->Bind(wxEVT_MOUSEWHEEL, &HexViewer::OnTextMouseScroll, this);
+    text_control_->Bind(wxEVT_STC_UPDATEUI, &HexViewer::OnSTCUpdateUI, this);
+
     scroll_bar_->Bind(wxEVT_SCROLL_CHANGED, &HexViewer::OnScroll, this);
     scroll_bar_->Bind(wxEVT_SCROLL_THUMBTRACK, &HexViewer::OnScroll, this);
 
@@ -84,6 +87,11 @@ auto HexViewer::OnTextMouseScroll(wxMouseEvent &event) -> void {
 
 auto HexViewer::OnTextControlSize([[maybe_unused]] wxSizeEvent &event) -> void { UpdateTextControl(true); }
 
+auto HexViewer::OnSTCUpdateUI(wxStyledTextEvent &event) -> void {
+    event.Skip();
+    UpdateTextControl(false);
+}
+
 /*
  * line looks like this
  *
@@ -127,7 +135,7 @@ auto HexViewer::UpdateTextControl(bool updated_size) -> void {
         }
     }
 
-    current_offset_ = std::min(num_max_lines, current_offset_);
+    current_offset_ = std::min(num_max_lines - display_height + 5, current_offset_);
 
     const auto buffer_size = buffer_view.size_bytes();
     const auto max_display_bytes = display_height * kBufferStride;

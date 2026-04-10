@@ -19,6 +19,7 @@ private:
     auto OnScroll(wxScrollEvent &event) -> void;
     auto OnTextMouseScroll(wxMouseEvent &event) -> void;
     auto OnTextControlSize(wxSizeEvent &event) -> void;
+    auto OnSTCUpdateUI(wxStyledTextEvent &event) -> void;
     auto UpdateTextControl(bool updated_size) -> void;
 
     wxStyledTextCtrl *text_control_ = nullptr;
