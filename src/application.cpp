@@ -169,7 +169,8 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
     hex_viewer_->Show();
 
     if (gxt::CheckHeader(current_file_)) {
-        notebook_right_->AddPage(new TextureViewer(notebook_right_, GLView::CreateAttributes()), "Texture view", true);
+        notebook_right_->AddPage(
+            new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Texture view", true);
     }
 
     notebook_right_->AddPage(hex_viewer_, "Hex view", true);

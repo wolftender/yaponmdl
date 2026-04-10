@@ -15,36 +15,36 @@ template <typename T>
 concept HandleDeleter = std::invocable<T, GLuint>;
 
 enum class ShaderPrimitiveType : GLenum {
-    Int = GL_INT,
-    IntVec2 = GL_INT_VEC2,
-    IntVec3 = GL_INT_VEC3,
-    IntVec4 = GL_INT_VEC4,
-    UInt = GL_UNSIGNED_INT,
-    UIntVec2 = GL_UNSIGNED_INT_VEC2,
-    UIntVec3 = GL_UNSIGNED_INT_VEC3,
-    UIntVec4 = GL_UNSIGNED_INT_VEC4,
-    Float = GL_FLOAT,
-    FloatVec2 = GL_FLOAT_VEC2,
-    FloatVec3 = GL_FLOAT_VEC3,
-    FloatVec4 = GL_FLOAT_VEC4,
-    FloatMat2 = GL_FLOAT_MAT2,
-    FloatMat3 = GL_FLOAT_MAT3,
-    FloatMat4 = GL_FLOAT_MAT4,
-    Sampler1D = GL_SAMPLER_1D,
-    Sampler2D = GL_SAMPLER_2D,
-    Sampler3D = GL_SAMPLER_3D
+    eInt = GL_INT,
+    eIntVec2 = GL_INT_VEC2,
+    eIntVec3 = GL_INT_VEC3,
+    eIntVec4 = GL_INT_VEC4,
+    eUInt = GL_UNSIGNED_INT,
+    eUIntVec2 = GL_UNSIGNED_INT_VEC2,
+    eUIntVec3 = GL_UNSIGNED_INT_VEC3,
+    eUIntVec4 = GL_UNSIGNED_INT_VEC4,
+    eFloat = GL_FLOAT,
+    eFloatVec2 = GL_FLOAT_VEC2,
+    eFloatVec3 = GL_FLOAT_VEC3,
+    eFloatVec4 = GL_FLOAT_VEC4,
+    eFloatMat2 = GL_FLOAT_MAT2,
+    eFloatMat3 = GL_FLOAT_MAT3,
+    eFloatMat4 = GL_FLOAT_MAT4,
+    eSampler1D = GL_SAMPLER_1D,
+    eSampler2D = GL_SAMPLER_2D,
+    eSampler3D = GL_SAMPLER_3D
 };
 
 enum class ShaderAttribType : GLenum {
-    Byte = GL_BYTE,
-    UnsignedByte = GL_UNSIGNED_BYTE,
-    Short = GL_SHORT,
-    UnsignedShort = GL_UNSIGNED_SHORT,
-    Int = GL_INT,
-    UnsignedInt = GL_UNSIGNED_INT,
-    HalfFloat = GL_HALF_FLOAT,
-    Float = GL_FLOAT,
-    Double = GL_DOUBLE
+    eByte = GL_BYTE,
+    eUnsignedByte = GL_UNSIGNED_BYTE,
+    eShort = GL_SHORT,
+    eUnsignedShort = GL_UNSIGNED_SHORT,
+    eInt = GL_INT,
+    eUnsignedInt = GL_UNSIGNED_INT,
+    eHalfFloat = GL_HALF_FLOAT,
+    eFloat = GL_FLOAT,
+    eDouble = GL_DOUBLE
 };
 
 struct LayoutElement {
@@ -60,7 +60,7 @@ struct LayoutElement {
 
 template <typename T>
 concept VertexType = requires() {
-    { T::get_layout() } -> std::convertible_to<std::span<const LayoutElement>>;
+    { T::GetLayout() } -> std::convertible_to<std::span<const LayoutElement>>;
 };
 
 class GLContext {

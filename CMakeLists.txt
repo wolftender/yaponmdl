@@ -4,6 +4,8 @@ project(yaponmdl VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 if (MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "/O2 /EHsc /Zi")
     set(CMAKE_CXX_FLAGS_DEBUG "/EHsc /Zi /D_CRTDBG_MAP_ALLOC")
@@ -52,10 +54,31 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+set(GENERATED_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
+set(ASSET_OUTPUT_DIR ${GENERATED_INCLUDE_DIR}/generated)
+include_directories(${GENERATED_INCLUDE_DIR})
+
 set(PROGRAM_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 
 add_library(thirdparty OBJECT ${PROGRAM_SRC_DIR}/thirdparty.cpp)
 add_library(glad OBJECT ${CMAKE_SOURCE_DIR}/third_party/glad/src/glad.c)
+
+set(GENERATED_HEADERS "")
+function(add_asset ASSET_FILE HEADER_NAME)
+    set(OUTPUT_FILE ${ASSET_OUTPUT_DIR}/${HEADER_NAME})
+    add_custom_command(
+        OUTPUT ${OUTPUT_FILE}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/embed_file.py ${ASSET_FILE} ${OUTPUT_FILE}
+        DEPENDS ${ASSET_FILE}
+        COMMENT "embedding binary asset ${ASSET_FILE} -> ${OUTPUT_FILE}"
+        VERBATIM
+    )
+    set(GENERATED_HEADERS ${GENERATED_HEADERS} ${OUTPUT_FILE} PARENT_SCOPE)
+endfunction()
+
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_texture.glsl vert_texture.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_texture.glsl frag_texture.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_checker.glsl frag_checker.glsl.h)
 
 set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/application.cpp
@@ -67,12 +90,16 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
+    ${PROGRAM_SRC_DIR}/graphics/gl.cpp
+    ${PROGRAM_SRC_DIR}/graphics/shader.cpp
+    ${PROGRAM_SRC_DIR}/graphics/texture.cpp
+    ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
 )
 
 if(WIN32)
-    add_executable(${PROJECT_NAME} WIN32 ${SOURCES_LIST})
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES_LIST} ${GENERATED_HEADERS})
 else()
-    add_executable(${PROJECT_NAME} ${SOURCES_LIST})
+    add_executable(${PROJECT_NAME} ${SOURCES_LIST} ${GENERATED_HEADERS})
 endif()
 
 if(WIN32)
