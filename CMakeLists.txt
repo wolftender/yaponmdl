@@ -16,6 +16,7 @@ endif()
 include(FetchContent)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/third_party)
+include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/third_party/glad/include)
 
 FetchContent_Declare(
     glm
@@ -34,7 +35,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm fmt)
 
 # wxwidgets
-find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc)
+find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc gl)
 
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
@@ -54,10 +55,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(PROGRAM_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 
 add_library(thirdparty OBJECT ${PROGRAM_SRC_DIR}/thirdparty.cpp)
+add_library(glad OBJECT ${CMAKE_SOURCE_DIR}/third_party/glad/src/glad.c)
 
 set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/application.cpp
     ${PROGRAM_SRC_DIR}/hexview.cpp
+    ${PROGRAM_SRC_DIR}/glview.cpp
+    ${PROGRAM_SRC_DIR}/textureview.cpp
+    ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
@@ -96,4 +101,4 @@ else()
     target_compile_options(thirdparty PRIVATE -w)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> fmt glm wx::core wx::base wx::stc)
+target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> $<TARGET_OBJECTS:glad> fmt glm wx::core wx::base wx::stc wx::gl)

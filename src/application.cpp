@@ -2,6 +2,9 @@
 
 #include "application.hpp"
 #include "hexview.hpp"
+#include "textureview.hpp"
+
+#include "formats/gxt.hpp"
 
 enum MenuCommand {
     eMenuCommandFileOpenFile,
@@ -27,6 +30,11 @@ auto DirectoryViewControl::SetupSections() -> void {
 ModelBrowserApplication::ModelBrowserApplication() : main_frame_{nullptr} {}
 
 auto ModelBrowserApplication::OnInit() -> bool {
+#if !defined(NDEBUG) && defined(_WIN32)
+    // report memory leaks on windows msvc debug
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
     ModelBrowserFrame *frame = new ModelBrowserFrame();
     frame->Show(true);
 
@@ -150,7 +158,12 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
     hex_viewer_->SetBufferView(current_file_);
     hex_viewer_->Show();
 
+    if (gxt::CheckHeader(current_file_)) {
+        notebook_right_->AddPage(new TextureViewer(notebook_right_, GLView::CreateAttributes()), "Texture view", true);
+    }
+
     notebook_right_->AddPage(hex_viewer_, "Hex view", true);
+    notebook_right_->ChangeSelection(0);
 }
 
 wxIMPLEMENT_APP(ModelBrowserApplication);

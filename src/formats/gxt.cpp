@@ -218,7 +218,10 @@ auto LoadBitmaps(std::span<const uint8_t> buffer) -> std::vector<GxtImageBitmap>
 auto CheckHeader(std::span<const uint8_t> buffer) -> bool {
     util::bytes::BinaryReader reader{buffer};
     try {
-        (void)ReadHeader(reader);
+        const auto header = ReadHeader(reader);
+        if (header.magic != kGxtMagicNumber || header.version != kGxtVersion || header.style != kGxtStyle) {
+            return false;
+        }
     } catch (const std::exception &) {
         return false;
     }
