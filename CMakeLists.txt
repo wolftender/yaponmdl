@@ -88,9 +88,12 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/hexview.cpp
     ${PROGRAM_SRC_DIR}/glview.cpp
     ${PROGRAM_SRC_DIR}/textureview.cpp
+    ${PROGRAM_SRC_DIR}/modelview.cpp
+    ${PROGRAM_SRC_DIR}/modelconv.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
+    ${PROGRAM_SRC_DIR}/formats/act.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
@@ -99,6 +102,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
     ${PROGRAM_SRC_DIR}/render/model.cpp
     ${PROGRAM_SRC_DIR}/render/device.cpp
+    ${PROGRAM_SRC_DIR}/render/camera.cpp
 )
 
 if(WIN32)

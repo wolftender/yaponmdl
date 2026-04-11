@@ -31,6 +31,13 @@ auto operator~(const T &a) -> T {
     return static_cast<T>(~static_cast<std::underlying_type_t<T>>(a));
 }
 
+template <typename T>
+    requires std::is_same_v<std::underlying_type_t<T>, GmoFlags>
+auto FlagHas(const T &flagset, T flag) -> bool {
+    return (static_cast<std::underlying_type_t<T>>(flagset) & static_cast<std::underlying_type_t<T>>(flag)) ==
+           static_cast<std::underlying_type_t<T>>(flag);
+}
+
 template <typename T> struct Rect {
     glm::vec<2, T> min;
     glm::vec<2, T> max;

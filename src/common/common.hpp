@@ -25,3 +25,7 @@ concept MapLike = requires(T m, const typename T::key_type &k) {
     typename T::mapped_type;
     { m.find(k) } -> std::convertible_to<typename T::const_iterator>;
 };
+
+template <typename... Ts> struct overload : Ts... {
+    using Ts::operator()...;
+};

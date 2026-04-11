@@ -1,6 +1,6 @@
 #version 400
 
-out VS_OUT {
+in VS_OUT {
     vec2 uv;
     vec3 color;
 } fs_in;

@@ -30,7 +30,6 @@ public:
     RenderDeviceOpenGL40(RenderDeviceOpenGL40 &&) = delete;
     auto operator=(RenderDeviceOpenGL40 &&) = delete;
 
-private:
     auto CreateSkinningBuffer() -> SkinningBufferHandle override;
     auto UpdateSkinningBuffer(SkinningBufferHandle &handle, std::span<const glm::fmat4x4> data) -> void override;
     auto UpdateSkinningBuffer(SkinningBufferHandle &handle, uint32_t id, const glm::fmat4x4 &matrix) -> void override;
@@ -47,6 +46,7 @@ private:
 
     auto RenderFrame(const ICamera &camera) -> void;
 
+private:
     const gl::GLContext *context_ = nullptr;
 
     gl::ShaderProgram static_shader_;

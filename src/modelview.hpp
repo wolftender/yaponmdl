@@ -1,9 +1,7 @@
 #pragma once
 #include "glview.hpp"
 
-#include "graphics/shader.hpp"
-#include "graphics/texture.hpp"
-
+#include "render/camera.hpp"
 #include "render/model.hpp"
 #include "render/device.hpp"
 
@@ -30,8 +28,10 @@ private:
     float zoom_ = 1.0f;
     std::span<const uint8_t> gmo_buffer_;
 
+    render::PerspectiveCamera camera_;
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
     std::unique_ptr<render::Model> model_;
+    std::optional<render::Model::Controller> controller_;
 
     State state_ = ModelViewer::State::eIdle;
 };

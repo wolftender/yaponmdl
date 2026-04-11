@@ -67,12 +67,10 @@ auto Model::Pose::GetNode(NodeId handle) const -> const Node * {
     return &nodes_[handle.index()];
 }
 
-auto Model::Pose::fromModel(const Model &model) -> std::unique_ptr<Pose> {
-    std::unique_ptr<Pose> pose{new (std::nothrow) Pose()};
-    if (!pose) {
-        return nullptr;
-    }
+auto Model::Pose::FromModel(const Model &model) -> std::unique_ptr<Pose> {
+    auto pose = std::unique_ptr<Pose>(new Pose());
 
+    pose->device_ = model.device_;
     pose->nodes_.reserve(model.nodes_.size());
 
     for (const auto &node : model.nodes_) {
@@ -94,9 +92,11 @@ auto Model::Pose::fromModel(const Model &model) -> std::unique_ptr<Pose> {
 
         // fill with bind pose matrices
         const auto &skin = model.skins_[anim_mesh.GetSkin().index()];
+
         auto &bone_array = skinning_buffer_handle.GetData().matrices;
         std::fill(bone_array, bone_array + skin.GetNodes().size(), glm::fmat4x4{1.0f});
 
+        pose->device_->UpdateSkinningBuffer(skinning_buffer_handle, bone_array);
         pose->skinning_buffers_.emplace_back(std::move(skinning_buffer_handle));
     }
 
@@ -139,7 +139,7 @@ Model::Model(hal::IDevice *device) : device_{device} {
             glm::fquat{1.0f, 0.0f, 0.0f, 0.0f}});
 }
 
-auto Model::CreatePose() const -> std::unique_ptr<Pose> { return Pose::fromModel(*this); }
+auto Model::CreatePose() const -> std::unique_ptr<Pose> { return Pose::FromModel(*this); }
 
 auto Model::AddMeshImpl(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices, MaterialId material)
     -> std::optional<MeshId> {

@@ -3,8 +3,10 @@
 #include "application.hpp"
 #include "hexview.hpp"
 #include "textureview.hpp"
+#include "modelview.hpp"
 
 #include "formats/gxt.hpp"
+#include "formats/gmo.hpp"
 
 enum MenuCommand {
     eMenuCommandFileOpenFile,
@@ -197,6 +199,9 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
     if (gxt::CheckHeader(current_file_)) {
         notebook_right_->AddPage(
             new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Texture view", true);
+    } else if (gmo::CheckHeader(current_file_)) {
+        notebook_right_->AddPage(
+            new ModelViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Model view", true);
     }
 
     notebook_right_->AddPage(hex_viewer_, "Hex view", true);

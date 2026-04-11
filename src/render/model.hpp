@@ -20,18 +20,20 @@ struct ModelVertex {
     glm::fvec2 uv;
     glm::fvec3 color;
     glm::fvec3 normal;
+    glm::fvec4 tangent;
     glm::fvec4 weights;
     glm::uvec4 bones;
 
     static auto GetLayout() -> std::span<const gl::LayoutElement> {
-        static constexpr std::array<gl::LayoutElement, 6> kLayout{
+        static constexpr std::array<gl::LayoutElement, 7> kLayout{
             gl::LayoutElement{0, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, position)},
             gl::LayoutElement{1, 2, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, uv)},
             gl::LayoutElement{2, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, color)},
             gl::LayoutElement{3, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, normal)},
-            gl::LayoutElement{4, 4, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, weights)},
+            gl::LayoutElement{4, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, tangent)},
+            gl::LayoutElement{5, 4, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, weights)},
             gl::LayoutElement{
-                5, 4, gl::ShaderAttribType::eUnsignedInt, sizeof(ModelVertex), offsetof(ModelVertex, bones)},
+                6, 4, gl::ShaderAttribType::eUnsignedInt, sizeof(ModelVertex), offsetof(ModelVertex, bones)},
         };
 
         return kLayout;
@@ -548,7 +550,7 @@ public:
         }
 
     private:
-        static auto fromModel(const Model &model) -> std::unique_ptr<Pose>;
+        static auto FromModel(const Model &model) -> std::unique_ptr<Pose>;
 
         Pose() = default;
 
@@ -683,6 +685,8 @@ public:
         auto GetAnimation() const -> AnimationId { return animation_; }
         auto GetLoop() const -> bool { return loop_; }
         auto GetTime() const -> float { return time_; }
+
+        auto GetPose() -> Pose & { return *pose_.get(); }
         auto GetPose() const -> const Pose & { return *pose_.get(); }
 
         auto SetLoop(bool loop) -> void { loop_ = loop; }

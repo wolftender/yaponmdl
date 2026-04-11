@@ -20,7 +20,7 @@ auto RenderDeviceOpenGL40::UpdateSkinningBuffer(SkinningBufferHandle &handle, st
     -> void {
     GL_IMPLEMENTATION_INTERNAL;
 
-    assert(data.size() < kMaxMatricesPerSkin);
+    assert(data.size() <= kMaxMatricesPerSkin);
     std::copy(data.begin(), data.end(), handle.GetData().matrices);
 
     handle.Update();
@@ -145,6 +145,9 @@ auto RenderDeviceOpenGL40::RenderFrame(const ICamera &camera) -> void {
                 context.SetSampler("u_diffuse", 0);
             }
 
+            draw->skinning_buffer->Update();
+
+            context.SetBuffer("u_bones", *draw->skinning_buffer);
             context.SetUniform("u_world", draw->world_matrix);
             draw->mesh->Draw();
             GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));

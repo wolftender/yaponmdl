@@ -106,13 +106,13 @@ public:
 
         template <StringValue S, typename T>
         auto SetBuffer(const S &name, const UniformBuffer<T> &buffer) const -> void {
-            shader_.executor_.RunOnContext([&](const auto &&) {
+            shader_.executor_.RunOnContext([&](const auto &) {
                 auto it = shader_.uniform_blocks_.find(name);
                 if (shader_.uniform_blocks_.end() == it) {
                     return;
                 }
 
-                GL_CHECK(glUniformBlockBinding(shader_.handle_, it->second.index, buffer.get_base()));
+                GL_CHECK(glUniformBlockBinding(shader_.handle_, it->second.index, buffer.GetBase()));
             });
         }
 

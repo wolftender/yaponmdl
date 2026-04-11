@@ -27,7 +27,7 @@ public:
 
     auto SetData(const T &data) -> void { data_ = data; }
 
-    auto Update() {
+    auto Update() const {
         executor_.RunOnContext([&](const auto &) {
             GL_CHECK(glBindBuffer(GL_UNIFORM_BUFFER, handle_));
             GL_CHECK(glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(T), &data_));
