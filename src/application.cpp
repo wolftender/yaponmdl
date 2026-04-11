@@ -114,6 +114,32 @@ auto ModelBrowserFrame::CloseCurrentFile() -> void {
     }
 
     hex_viewer_ = nullptr;
+
+    // gl context needs to be shown in order to allow for cleanup
+    // this probably shold be fixed in a different way
+    if (notebook_right_->GetPageCount() > 0) {
+        std::vector<GLView *> gl_views;
+
+        for (uint32_t i = 0; i < notebook_right_->GetPageCount(); ++i) {
+            auto *page = notebook_right_->GetPage(i);
+            auto *gl_view = dynamic_cast<GLView *>(page);
+
+            if (gl_view) {
+                gl_views.emplace_back(gl_view);
+                notebook_right_->RemovePage(i);
+
+                i = 0; // we have to restart, ids have changed
+            }
+        }
+
+        for (auto *gl_view : gl_views) {
+            gl_view->Reparent(this);
+            gl_view->SetSize(0, 0, 1, 1);
+            gl_view->Show(true);
+            gl_view->Destroy();
+        }
+    }
+
     notebook_right_->DeleteAllPages();
 }
 

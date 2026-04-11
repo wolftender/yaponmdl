@@ -121,8 +121,8 @@ auto TextureViewer::OnRender() -> void {
 
     // clang-format off
     const glm::fmat4x4 aspect_fix = glm::fmat4x4{
-        1.0f / aspect * tex_aspect * zoom_, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f * zoom_, 0.0f, 0.0f,
+        1.0f / aspect * zoom_, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f * zoom_ / tex_aspect, 0.0f, 0.0f,
         0.0f , 0.0f, 1.0f, 0.0f,
         0.0f , 0.0f, 0.0f, 1.0f,
     };
