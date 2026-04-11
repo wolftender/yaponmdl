@@ -6,7 +6,7 @@ namespace gl {
 template <typename T> class UniformBuffer final {
 public:
     UniformBuffer(GLContext::Executor &&executor, const T &data, uint32_t base)
-        : executor_{executor}, handle_{factories::MakeBuffer(executor_)}, data_{data}, buffer_base_{base} {
+        : executor_{executor}, handle_{factories::MakeBuffer(executor_)}, buffer_base_{base}, data_{data} {
         executor_.RunOnContext([&](const auto &) {
             GL_CHECK(glBindBuffer(GL_UNIFORM_BUFFER, handle_));
             GL_CHECK(glBufferData(GL_UNIFORM_BUFFER, sizeof(T), &data, GL_STATIC_DRAW));
