@@ -14,6 +14,7 @@ protected:
     auto OnRender() -> void override;
 
     auto OnIdle(wxIdleEvent &event) -> void;
+    auto OnSize(wxSizeEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
 
 private:
@@ -26,6 +27,8 @@ private:
     };
 
     float zoom_ = 1.0f;
+
+    std::optional<glm::uvec2> pending_resize_;
     std::span<const uint8_t> gmo_buffer_;
 
     render::PerspectiveCamera camera_;

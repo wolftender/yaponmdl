@@ -3,7 +3,8 @@
 namespace gl {
 
 ShaderProgram::ShaderProgram(
-    GLContext::Executor executor, const std::string_view &vs_source, const std::string_view &fs_source)
+    GLContext::Executor executor, const std::string_view &vs_source, const std::string_view &fs_source,
+    std::optional<std::span<BlockLayoutDesc>> ubo_bindings)
     : executor_{executor}, handle_{factories::MakeProgram(executor_)} {
 
     executor_.RunOnContext([&](const auto &) {
@@ -29,7 +30,7 @@ ShaderProgram::ShaderProgram(
         }
 
         MapUniforms();
-        MapUniformBlocks();
+        MapUniformBlocks(ubo_bindings);
     });
 }
 
@@ -56,7 +57,7 @@ auto ShaderProgram::MapUniforms() -> void {
     }
 }
 
-auto ShaderProgram::MapUniformBlocks() -> void {
+auto ShaderProgram::MapUniformBlocks(std::optional<std::span<BlockLayoutDesc>> ubo_bindings) -> void {
     GL_IMPLEMENTATION_INTERNAL;
 
     GLint num_uniform_blocks = 0;
@@ -74,7 +75,16 @@ auto ShaderProgram::MapUniformBlocks() -> void {
         auto index = GL_CHECK(glGetUniformBlockIndex(handle_, name_buf.data()));
         std::string name{name_buf.data()};
 
-        uniform_blocks_.insert({name, {name, data_size, index}});
+        uint32_t ubo_index = 0;
+        if (ubo_bindings.has_value()) {
+            const auto binding = std::find_if(
+                ubo_bindings->begin(), ubo_bindings->end(), [&](const auto &binding) { return binding.first == name; });
+            if (binding != ubo_bindings->end()) {
+                ubo_index = binding->second;
+            }
+        }
+
+        uniform_blocks_.insert({name, {name, data_size, index, ubo_index}});
     }
 }
 

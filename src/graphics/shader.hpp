@@ -1,4 +1,6 @@
 #pragma once
+#include <optional>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -47,9 +49,10 @@ public:
         std::string name;
         GLint data_size;
         GLuint index;
+        GLuint ubo_index;
 
-        UniformBlockBinding(const std::string &name, GLint data_size, GLuint index)
-            : name{name}, data_size{data_size}, index{index} {}
+        UniformBlockBinding(const std::string &name, GLint data_size, GLuint index, GLuint ubo_index)
+            : name{name}, data_size{data_size}, index{index}, ubo_index{ubo_index} {}
     };
 
     class Context {
@@ -105,15 +108,14 @@ public:
         }
 
         template <StringValue S, typename T>
-        auto SetBuffer(const S &name, const UniformBuffer<T> &buffer) const -> void {
-            shader_.executor_.RunOnContext([&](const auto &) {
-                auto it = shader_.uniform_blocks_.find(name);
-                if (shader_.uniform_blocks_.end() == it) {
-                    return;
-                }
+        auto SetBufferBase(const S &name, const UniformBuffer<T> &buffer) const -> void {
+            auto it = shader_.uniform_blocks_.find(name);
+            if (shader_.uniform_blocks_.end() == it) {
+                return;
+            }
 
-                GL_CHECK(glUniformBlockBinding(shader_.handle_, it->second.index, buffer.GetBase()));
-            });
+            const auto ubo_binding = it->second.ubo_index;
+            buffer.BindBuffer(ubo_binding);
         }
 
     private:
@@ -143,7 +145,12 @@ public:
         });
     }
 
-    ShaderProgram(GLContext::Executor executor, const std::string_view &vs_source, const std::string_view &fs_source);
+    using BlockLayoutDesc = std::pair<std::string, uint32_t>;
+
+    ShaderProgram(
+        GLContext::Executor executor, const std::string_view &vs_source, const std::string_view &fs_source,
+        std::optional<std::span<BlockLayoutDesc>> ubo_bindings = std::nullopt);
+
     ShaderProgram(const ShaderProgram &) = delete;
     auto operator=(const ShaderProgram &) -> ShaderProgram & = delete;
     ShaderProgram(ShaderProgram &&) = default;
@@ -153,7 +160,7 @@ public:
 
 private:
     auto MapUniforms() -> void;
-    auto MapUniformBlocks() -> void;
+    auto MapUniformBlocks(std::optional<std::span<BlockLayoutDesc>> ubo_bindings) -> void;
 
     static auto CompileShader(GLContext::Executor executor, const GLenum type, const std::string_view &source)
         -> ShaderHandle;

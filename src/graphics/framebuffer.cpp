@@ -2,6 +2,38 @@
 
 namespace gl {
 
+static constexpr auto FramebufferStatusToString(GLenum status) -> std::string_view {
+    switch (status) {
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+        return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+        return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+        return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+        return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+
+    case GL_FRAMEBUFFER_UNSUPPORTED:
+        return "GL_FRAMEBUFFER_UNSUPPORTED";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+        return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+        return "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS";
+
+    case 0:
+        return "glCheckFramebufferStatus error";
+
+    case GL_FRAMEBUFFER_UNDEFINED:
+    default:
+        return "GL_FRAMEBUFFER_UNDEFINED";
+    }
+}
+
 Framebuffer::Framebuffer(GLContext::Executor executor, uint32_t width, uint32_t height, const Description &description)
     : executor_{executor}, width_{width}, height_{height}, handle_{factories::MakeFramebuffer(executor)},
       description_{description}, depth_{executor} {
@@ -45,8 +77,15 @@ Framebuffer::Framebuffer(GLContext::Executor executor, uint32_t width, uint32_t 
         }
 
         GL_CHECK(glDrawBuffers(static_cast<GLsizei>(active_attachments.size()), active_attachments.data()));
+
+        const auto status = GL_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER));
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error{fmt::format("framebuffer is incomplete: {}", FramebufferStatusToString(status))};
+        }
+
         GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
         GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+        GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     });
 }
 
@@ -132,8 +171,15 @@ MultisampleFramebuffer::MultisampleFramebuffer(
         }
 
         GL_CHECK(glDrawBuffers(static_cast<GLsizei>(active_attachments.size()), active_attachments.data()));
+
+        const auto status = GL_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER));
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error{fmt::format("framebuffer is incomplete: {}", FramebufferStatusToString(status))};
+        }
+
         GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
         GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+        GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     });
 }
 

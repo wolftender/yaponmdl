@@ -1,7 +1,13 @@
 #pragma once
 #include "common/fixedqueue.hpp"
+#include "common/genpool.hpp"
 
 #include "graphics/shader.hpp"
+#include "graphics/mesh.hpp"
+#include "graphics/texture.hpp"
+#include "graphics/buffer.hpp"
+#include "graphics/framebuffer.hpp"
+
 #include "render/model.hpp"
 
 namespace render::hal {
@@ -13,12 +19,38 @@ public:
 };
 
 class RenderDeviceOpenGL40 : public IDevice {
+private:
+    struct PositionVertex {
+        glm::fvec3 position;
+
+        PositionVertex(const glm::fvec3 &position) : position{position} {}
+        PositionVertex(float x, float y, float z) : position{x, y, z} {}
+
+        static auto GetLayout() -> std::span<const gl::LayoutElement> {
+            static constexpr std::array<gl::LayoutElement, 1> kLayout{gl::LayoutElement{
+                0, 3, gl::ShaderAttribType::eFloat, sizeof(PositionVertex), offsetof(PositionVertex, position)}};
+
+            return kLayout;
+        }
+    };
+
+    static auto MakeScreenQuad(gl::GLContext::Executor executor) -> gl::Mesh<PositionVertex>;
+
 public:
+    static constexpr uint32_t kNumMaxSkinningBuffers = 256;
+
     struct Description {
         std::string_view fs_static_source;
         std::string_view vs_static_source;
+
         std::string_view fs_skinned_source;
         std::string_view vs_skinned_source;
+
+        std::string_view fs_post_filter;
+        std::string_view vs_post_filter;
+
+        uint32_t target_width;
+        uint32_t target_height;
     };
 
     RenderDeviceOpenGL40(const gl::GLContext *context, const Description &description);
@@ -45,15 +77,31 @@ public:
     auto SubmitSkinnedDraw(SkinnedDrawDescription &&desc) -> void override;
 
     auto RenderFrame(const ICamera &camera) -> void;
+    auto ResizeFrame(uint32_t width, uint32_t height) -> void;
 
 private:
+    auto RebuildFramebuffers(uint32_t width, uint32_t height) -> void;
+    auto GeometryPass(const ICamera &camera) -> void;
+    auto PostprocessPass() -> void;
+
     const gl::GLContext *context_ = nullptr;
 
     gl::ShaderProgram static_shader_;
     gl::ShaderProgram skinned_shader_;
+    gl::ShaderProgram post_shader_;
+    gl::Mesh<PositionVertex> screen_quad_;
+
+    std::shared_ptr<gl::Texture> color_target_;
+    std::shared_ptr<gl::Texture> depth_target_;
+    std::optional<gl::Framebuffer> color_pass_fb_;
 
     util::FixedSizeQueue<StaticDrawDescription, 512> static_draws_;
     util::FixedSizeQueue<SkinnedDrawDescription, 256> skinned_draws_;
+
+    util::GenerationalPool<gl::Mesh<StaticVertex>> mesh_pool_;
+    util::GenerationalPool<gl::Mesh<AnimatedVertex>> anim_mesh_pool_;
+    util::GenerationalPool<gl::Texture> texture_pool_;
+    util::GenerationalPool<gl::UniformBuffer<cbModelSkinningBuffer>> skinning_pool_;
 };
 
 } // namespace render::hal

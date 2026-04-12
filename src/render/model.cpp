@@ -93,10 +93,10 @@ auto Model::Pose::FromModel(const Model &model) -> std::unique_ptr<Pose> {
         // fill with bind pose matrices
         const auto &skin = model.skins_[anim_mesh.GetSkin().index()];
 
-        auto &bone_array = skinning_buffer_handle.GetData().matrices;
-        std::fill(bone_array, bone_array + skin.GetNodes().size(), glm::fmat4x4{1.0f});
+        for (uint32_t i = 0; i < skin.GetNodes().size(); ++i) {
+            pose->device_->UpdateSkinningBuffer(skinning_buffer_handle, i, glm::fmat4x4{1.0f});
+        }
 
-        pose->device_->UpdateSkinningBuffer(skinning_buffer_handle, bone_array);
         pose->skinning_buffers_.emplace_back(std::move(skinning_buffer_handle));
     }
 
@@ -316,16 +316,18 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
             const auto &material = materials_[mesh.GetMaterial().index()];
 
             hal::StaticDrawDescription draw_desc = {
-                .mesh = &mesh.GetHandle(),
+                .mesh = mesh.GetHandle(),
                 .world_matrix = matrix,
+                .diffuse_map = std::nullopt,
+                .normal_map = std::nullopt,
             };
 
             if (material.GetDiffuse().has_value()) {
-                draw_desc.diffuse_map = &textures_[material.GetDiffuse()->index()].GetHandle();
+                draw_desc.diffuse_map = textures_[material.GetDiffuse()->index()].GetHandle();
             }
 
             if (material.GetNormal().has_value()) {
-                draw_desc.normal_map = &textures_[material.GetNormal()->index()].GetHandle();
+                draw_desc.normal_map = textures_[material.GetNormal()->index()].GetHandle();
             }
 
             device_->SubmitStaticDraw(std::move(draw_desc));
@@ -347,17 +349,19 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
             }
 
             hal::SkinnedDrawDescription draw_desc = {
-                .mesh = &anim_mesh.GetHandle(),
-                .skinning_buffer = &pose.skinning_buffers_[anim_mesh_id.index()],
+                .mesh = anim_mesh.GetHandle(),
+                .skinning_buffer = pose.skinning_buffers_[anim_mesh_id.index()],
                 .world_matrix = world,
+                .diffuse_map = std::nullopt,
+                .normal_map = std::nullopt,
             };
 
             if (material.GetDiffuse().has_value()) {
-                draw_desc.diffuse_map = &textures_[material.GetDiffuse()->index()].GetHandle();
+                draw_desc.diffuse_map = textures_[material.GetDiffuse()->index()].GetHandle();
             }
 
             if (material.GetNormal().has_value()) {
-                draw_desc.normal_map = &textures_[material.GetNormal()->index()].GetHandle();
+                draw_desc.normal_map = textures_[material.GetNormal()->index()].GetHandle();
             }
 
             device_->SubmitSkinnedDraw(std::move(draw_desc));

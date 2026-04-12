@@ -82,6 +82,8 @@ add_asset(${PROGRAM_SRC_DIR}/shaders/frag_checker.glsl frag_checker.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_mesh.glsl frag_mesh.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_staticmesh.glsl vert_staticmesh.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_skinmesh.glsl vert_skinmesh.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_postfilter.glsl vert_postfilter.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_postfilter.glsl frag_postfilter.glsl.h)
 
 set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/application.cpp
@@ -90,7 +92,6 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/textureview.cpp
     ${PROGRAM_SRC_DIR}/modelview.cpp
     ${PROGRAM_SRC_DIR}/modelconv.cpp
-    ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
     ${PROGRAM_SRC_DIR}/formats/act.cpp
@@ -98,6 +99,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/graphics/shader.cpp
+    ${PROGRAM_SRC_DIR}/graphics/buffer.cpp
     ${PROGRAM_SRC_DIR}/graphics/texture.cpp
     ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
     ${PROGRAM_SRC_DIR}/render/model.cpp

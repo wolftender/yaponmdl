@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -9,9 +10,6 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "graphics/gl.hpp"
-#include "graphics/mesh.hpp"
-#include "graphics/texture.hpp"
-#include "graphics/buffer.hpp"
 
 namespace render {
 
@@ -52,11 +50,6 @@ using AnimatedVertex = ModelVertex;
 // handles for primitives
 namespace hal {
 
-using TextureHandle = gl::Texture;
-using MeshHandle = gl::Mesh<ModelVertex>;
-using AnimMeshHandle = gl::Mesh<ModelVertex>;
-using SkinningBufferHandle = gl::UniformBuffer<cbModelSkinningBuffer>;
-
 enum class TextureMinFilter {
     eNearest,
     eLinear,
@@ -85,26 +78,51 @@ struct TextureDescription {
     std::span<const uint8_t> data;
 };
 
-struct StaticDrawDescription {
-    const MeshHandle *mesh = nullptr;
-    glm::fmat4x4 world_matrix = {1.0f};
-
-    const TextureHandle *diffuse_map = nullptr;
-    const TextureHandle *normal_map = nullptr;
-};
-
-struct SkinnedDrawDescription {
-    const MeshHandle *mesh = nullptr;
-    const SkinningBufferHandle *skinning_buffer = nullptr;
-
-    glm::fmat4x4 world_matrix = {1.0f};
-
-    const TextureHandle *diffuse_map = nullptr;
-    const TextureHandle *normal_map = nullptr;
-};
-
 class IDevice {
+private:
+    struct TextureTag;
+    struct MeshTag;
+    struct AnimMeshTag;
+    struct SkinningBufferTag;
+
 public:
+    template <typename Tag> class Id {
+    public:
+        auto index() const -> uint64_t { return index_; }
+
+        Id(const Id &) = default;
+        auto operator=(const Id &) -> Id & = default;
+
+    private:
+        explicit Id(uint64_t index) : index_{index} {}
+        uint64_t index_;
+
+        friend class IDevice;
+    };
+
+    using TextureHandle = Id<TextureTag>;
+    using MeshHandle = Id<MeshTag>;
+    using AnimMeshHandle = Id<AnimMeshTag>;
+    using SkinningBufferHandle = Id<SkinningBufferTag>;
+
+    struct StaticDrawDescription {
+        MeshHandle mesh;
+        glm::fmat4x4 world_matrix = {1.0f};
+
+        std::optional<TextureHandle> diffuse_map;
+        std::optional<TextureHandle> normal_map;
+    };
+
+    struct SkinnedDrawDescription {
+        AnimMeshHandle mesh;
+        SkinningBufferHandle skinning_buffer;
+
+        glm::fmat4x4 world_matrix = {1.0f};
+
+        std::optional<TextureHandle> diffuse_map;
+        std::optional<TextureHandle> normal_map;
+    };
+
     IDevice() = default;
     virtual ~IDevice() noexcept = default;
 
@@ -132,7 +150,23 @@ public:
     virtual auto SubmitSkinnedDraw(const SkinnedDrawDescription &desc) -> void = 0;
     virtual auto SubmitStaticDraw(StaticDrawDescription &&desc) -> void = 0;
     virtual auto SubmitSkinnedDraw(SkinnedDrawDescription &&desc) -> void = 0;
+
+protected:
+    auto CreateTextureHandle(uint64_t value) const -> TextureHandle { return TextureHandle{value}; }
+    auto CreateMeshHandle(uint64_t value) const -> MeshHandle { return MeshHandle{value}; }
+    auto CreateAnimMeshHandle(uint64_t value) const -> AnimMeshHandle { return AnimMeshHandle{value}; }
+
+    auto CreateSkinningBufferHandle(uint64_t value) const -> SkinningBufferHandle {
+        return SkinningBufferHandle{value};
+    }
 };
+
+using TextureHandle = IDevice::TextureHandle;
+using MeshHandle = IDevice::MeshHandle;
+using AnimMeshHandle = IDevice::AnimMeshHandle;
+using SkinningBufferHandle = IDevice::SkinningBufferHandle;
+using StaticDrawDescription = IDevice::StaticDrawDescription;
+using SkinnedDrawDescription = IDevice::SkinnedDrawDescription;
 
 } // namespace hal
 

@@ -6,7 +6,7 @@ layout(location = 2) in vec3 a_color;
 layout(location = 3) in vec3 a_normal;
 layout(location = 4) in vec4 a_tangent;
 layout(location = 5) in vec4 a_weight;
-layout(location = 6) in ivec4 a_bone;
+layout(location = 6) in uvec4 a_bone;
 
 uniform mat4 u_projection;
 uniform mat4 u_view;
