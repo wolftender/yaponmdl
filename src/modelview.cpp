@@ -22,9 +22,13 @@ public:
 ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gmo_buffer)
     : GLView{parent, attributes}, gmo_buffer_{gmo_buffer} {
 
+    camera_.SetNear(0.1f);
+    camera_.SetFar(300.0f);
+
     Bind(wxEVT_SIZE, &ModelViewer::OnSize, this);
     Bind(wxEVT_IDLE, &ModelViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &ModelViewer::OnMouseScroll, this);
+    Bind(wxEVT_MOTION, &ModelViewer::OnMouseMotion, this);
 }
 
 auto ModelViewer::OnInitializeGL() -> void {
@@ -91,7 +95,7 @@ auto ModelViewer::OnInitializeGL() -> void {
         return;
     }
 
-    camera_.SetPosition({0.0f, 0.0f, 4.0f});
+    camera_.SetDistance(4.0f);
 }
 
 auto ModelViewer::OnRender() -> void {
@@ -113,10 +117,10 @@ auto ModelViewer::OnRender() -> void {
     GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 
     camera_.SetAspect(static_cast<float>(current_size.x) / static_cast<float>(current_size.y));
+    camera_.SetDistance(zoom_);
+    camera_.SetCenter({0.0f, 0.5f, 0.0f});
 
     glm::fmat4x4 transform = glm::fmat4x4{1.0f};
-    transform = glm::scale(transform, glm::fvec3{zoom_, zoom_, zoom_});
-
     if (model_ && controller_.has_value()) {
         model_->Render(controller_->GetPose(), transform);
     }
@@ -129,5 +133,30 @@ auto ModelViewer::OnIdle([[maybe_unused]] wxIdleEvent &event) -> void { Render()
 
 auto ModelViewer::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
     auto delta = event.GetWheelRotation() / event.GetWheelDelta();
-    zoom_ = glm::clamp(zoom_ + (delta) * 0.05f, 0.2f, 10.0f);
+    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+}
+
+auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
+    glm::ivec2 current_mouse_position;
+    event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
+
+    if (event.Dragging() && event.LeftIsDown()) {
+        if (!prev_mouse_pos_.has_value()) {
+            prev_mouse_pos_ = current_mouse_position;
+            return;
+        }
+
+        const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
+        prev_mouse_pos_ = current_mouse_position;
+
+        const auto delta_yaw = static_cast<float>(delta_position.x) / 300.0f;
+        const auto delta_pitch = static_cast<float>(delta_position.y) / 300.0f;
+
+        camera_.SetElevation(camera_.GetElevation() - delta_pitch);
+        camera_.SetAzimuth(camera_.GetAzimuth() - delta_yaw);
+    } else if (event.Dragging() && event.MiddleIsDown()) {
+
+    } else {
+        prev_mouse_pos_ = std::nullopt;
+    }
 }

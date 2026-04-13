@@ -17,6 +17,8 @@ protected:
     auto OnSize(wxSizeEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
 
+    auto OnMouseMotion(wxMouseEvent &event) -> void;
+
 private:
     enum class State {
         eIdle,
@@ -28,10 +30,12 @@ private:
 
     float zoom_ = 1.0f;
 
-    std::optional<glm::uvec2> pending_resize_;
+    std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
+    std::optional<glm::uvec2> pending_resize_ = std::nullopt;
+
     std::span<const uint8_t> gmo_buffer_;
 
-    render::PerspectiveCamera camera_;
+    render::AzimuthCamera camera_;
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
     std::unique_ptr<render::Model> model_;
     std::optional<render::Model::Controller> controller_;

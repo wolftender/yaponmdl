@@ -2,16 +2,6 @@
 
 namespace render {
 
-auto PerspectiveCamera::SetPosition(const glm::fvec3 &position) -> void {
-    position_ = position;
-    dirty_bit_view_ = true;
-}
-
-auto PerspectiveCamera::SetTarget(const glm::fvec3 &target) -> void {
-    target_ = target;
-    dirty_bit_view_ = true;
-}
-
 auto PerspectiveCamera::SetAspect(float aspect) -> void {
     aspect_ = aspect;
     dirty_bit_proj_ = true;
@@ -32,24 +22,24 @@ auto PerspectiveCamera::SetFar(float far) -> void {
     dirty_bit_proj_ = true;
 }
 
+auto PerspectiveCamera::GetView() const -> const glm::fmat4x4 & {
+    static const glm::fmat4x4 kIdentity{1.0f};
+    return kIdentity;
+}
+
+auto PerspectiveCamera::GetViewInv() const -> const glm::fmat4x4 & {
+    static const glm::fmat4x4 kIdentity{1.0f};
+    return kIdentity;
+}
+
 auto PerspectiveCamera::GetProjection() const -> const glm::fmat4x4 & {
     CalculateProjection();
     return projection_;
 }
 
-auto PerspectiveCamera::GetView() const -> const glm::fmat4x4 & {
-    CalculateView();
-    return view_;
-}
-
 auto PerspectiveCamera::GetProjectionInv() const -> const glm::fmat4x4 & {
     CalculateProjection();
     return projection_inv_;
-}
-
-auto PerspectiveCamera::GetViewInv() const -> const glm::fmat4x4 & {
-    CalculateView();
-    return view_inv_;
 }
 
 inline auto PerspectiveCamera::CalculateProjection() const -> void {
@@ -60,11 +50,77 @@ inline auto PerspectiveCamera::CalculateProjection() const -> void {
     }
 }
 
-inline auto PerspectiveCamera::CalculateView() const -> void {
+auto LookAtCamera::SetPosition(const glm::fvec3 &position) -> void {
+    position_ = position;
+    dirty_bit_view_ = true;
+}
+
+auto LookAtCamera::SetTarget(const glm::fvec3 &target) -> void {
+    target_ = target;
+    dirty_bit_view_ = true;
+}
+
+auto LookAtCamera::GetView() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_;
+}
+
+auto LookAtCamera::GetViewInv() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_inv_;
+}
+
+inline auto LookAtCamera::CalculateView() const -> void {
     if (dirty_bit_view_) {
         view_ = glm::lookAt(position_, target_, glm::fvec3{0.0f, 1.0f, 0.0f});
         view_inv_ = glm::inverse(view_);
         dirty_bit_view_ = false;
+    }
+}
+
+auto AzimuthCamera::SetCenter(const glm::fvec3 &center) -> void {
+    center_ = center;
+    dirty_bit_view_ = true;
+}
+
+auto AzimuthCamera::SetDistance(float distance) -> void {
+    distance_ = distance;
+    dirty_bit_view_ = true;
+}
+
+auto AzimuthCamera::SetAzimuth(float azimuth) -> void {
+    azimuth_ = std::fmodf(azimuth, 2.0f * glm::pi<float>());
+    dirty_bit_view_ = true;
+}
+
+auto AzimuthCamera::SetElevation(float elevation) -> void {
+    elevation_ = std::fmodf(elevation, 2.0f * glm::pi<float>());
+    dirty_bit_view_ = true;
+}
+
+auto AzimuthCamera::GetView() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_;
+}
+
+auto AzimuthCamera::GetViewInv() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_inv_;
+}
+
+inline auto AzimuthCamera::CalculateView() const -> void {
+    if (dirty_bit_view_) {
+        view_ = glm::fmat4x4{1.0f};
+        view_ = glm::translate(view_, glm::fvec3{0.0f, 0.0f, -distance_});
+        view_ = glm::rotate(view_, -elevation_, glm::fvec3{1.0f, 0.0f, 0.0f});
+        view_ = glm::rotate(view_, -azimuth_, glm::fvec3{0.0f, 1.0f, 0.0f});
+        view_ = glm::translate(view_, -center_);
+
+        view_inv_ = glm::fmat4x4{1.0f};
+        view_inv_ = glm::translate(view_inv_, center_);
+        view_inv_ = glm::rotate(view_inv_, azimuth_, glm::fvec3{0.0f, 1.0f, 0.0f});
+        view_inv_ = glm::rotate(view_inv_, elevation_, glm::fvec3{1.0f, 0.0f, 0.0f});
+        view_inv_ = glm::translate(view_inv_, glm::fvec3{0.0f, 0.0f, distance_});
     }
 }
 
