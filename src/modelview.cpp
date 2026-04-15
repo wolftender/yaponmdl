@@ -25,6 +25,8 @@ ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std
     camera_.SetNear(0.1f);
     camera_.SetFar(300.0f);
 
+    animation_timer_ = std::make_unique<AnimationTimer>(this);
+
     Bind(wxEVT_SIZE, &ModelViewer::OnSize, this);
     Bind(wxEVT_IDLE, &ModelViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &ModelViewer::OnMouseScroll, this);
@@ -88,7 +90,7 @@ auto ModelViewer::OnInitializeGL() -> void {
     try {
         const auto act_model = act::LoadFromBinary(buf);
         model_ = conv::ConvertACT(act_model, device_.get());
-        controller_ = model_->CreateController(model_->MakeAnimationList().front());
+        controller_ = model_->CreateController(model_->MakeAnimationList()[4]);
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("model viewer fatal error, cannot convert model: %s", e.what()));
         state_ = State::eGraphicsError;
@@ -96,6 +98,9 @@ auto ModelViewer::OnInitializeGL() -> void {
     }
 
     camera_.SetDistance(4.0f);
+
+    animation_timer_->Begin();
+    last_frame_ = std::chrono::steady_clock::now();
 }
 
 auto ModelViewer::OnRender() -> void {
@@ -109,6 +114,13 @@ auto ModelViewer::OnRender() -> void {
         device_->ResizeFrame(pending_resize_->x, pending_resize_->y);
         pending_resize_.reset();
     }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto delta_time =
+        static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(now - last_frame_).count()) * 10e-7f;
+    last_frame_ = now;
+
+    controller_->Integrate(delta_time);
 
     const auto current_size = GetSize();
 

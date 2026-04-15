@@ -1,4 +1,6 @@
 #pragma once
+#include <chrono>
+
 #include "glview.hpp"
 
 #include "render/camera.hpp"
@@ -20,6 +22,17 @@ protected:
     auto OnMouseMotion(wxMouseEvent &event) -> void;
 
 private:
+    class AnimationTimer : public wxTimer {
+    public:
+        AnimationTimer(ModelViewer *viewer) : viewer_{viewer} {}
+
+        auto Notify() -> void { viewer_->Refresh(); }
+        auto Begin() -> void { wxTimer::Start(10); }
+
+    private:
+        ModelViewer *viewer_ = nullptr;
+    };
+
     enum class State {
         eIdle,
         eGraphicsError,
@@ -29,6 +42,8 @@ private:
     };
 
     float zoom_ = 1.0f;
+    std::unique_ptr<AnimationTimer> animation_timer_ = nullptr;
+    std::chrono::steady_clock::time_point last_frame_;
 
     std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
     std::optional<glm::uvec2> pending_resize_ = std::nullopt;
