@@ -135,7 +135,7 @@ auto RenderDeviceOpenGL40::RenderFrame(const ICamera &camera) -> void {
     GL_CHECK(glEnable(GL_DEPTH_TEST));
 
     color_pass_fb_->Use([&]() {
-        color_pass_fb_->ClearColorDepth(glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f});
+        color_pass_fb_->ClearColorDepth(glm::fvec4{0.207f, 0.36f, 0.64f, 1.0f});
         GeometryPass(camera);
     });
 

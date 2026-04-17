@@ -8,7 +8,7 @@
 #include "graphics/buffer.hpp"
 #include "graphics/framebuffer.hpp"
 
-#include "render/model.hpp"
+#include "render/render.hpp"
 
 namespace render::hal {
 

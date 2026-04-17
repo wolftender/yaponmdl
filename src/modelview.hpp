@@ -6,6 +6,7 @@
 #include "render/camera.hpp"
 #include "render/model.hpp"
 #include "render/device.hpp"
+#include "render/text.hpp"
 
 class ModelViewer : public GLView {
 public:
@@ -40,6 +41,17 @@ private:
         eInvalidTexture,
         eReady,
     };
+
+    auto RefreshText() -> void;
+
+    uint32_t frame_counter_ = 0;
+    uint32_t anim_counter_ = 0;
+    uint32_t fps_ = 0;
+    float frame_timer_ = 0.0f;
+
+    render::FontContext font_context_;
+    std::optional<gl::ShaderProgram> text_shader_;
+    std::optional<render::FontContext::TextObject> test_text_;
 
     float zoom_ = 1.0f;
     std::unique_ptr<AnimationTimer> animation_timer_ = nullptr;

@@ -84,6 +84,9 @@ add_asset(${PROGRAM_SRC_DIR}/shaders/vert_staticmesh.glsl vert_staticmesh.glsl.h
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_skinmesh.glsl vert_skinmesh.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_postfilter.glsl vert_postfilter.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_postfilter.glsl frag_postfilter.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_text.glsl vert_text.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_text.glsl frag_text.glsl.h)
+add_asset(${CMAKE_CURRENT_LIST_DIR}/assets/opensans.ttf opensans.ttf.h)
 
 set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/application.cpp
@@ -103,6 +106,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/graphics/texture.cpp
     ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
     ${PROGRAM_SRC_DIR}/render/model.cpp
+    ${PROGRAM_SRC_DIR}/render/text.cpp
     ${PROGRAM_SRC_DIR}/render/device.cpp
     ${PROGRAM_SRC_DIR}/render/camera.cpp
 )
