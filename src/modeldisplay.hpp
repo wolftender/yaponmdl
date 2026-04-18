@@ -8,7 +8,7 @@
 class ModelDisplay : public wxWindow {
 public:
     ModelDisplay(
-        std::span<const uint8_t> model_buffer, wxWindow *parent = nullptr, wxWindowID id = wxID_ANY,
+        std::unique_ptr<ModelViewer::ILoader> loader, wxWindow *parent = nullptr, wxWindowID id = wxID_ANY,
         const wxPoint &position = wxDefaultPosition, const wxSize &size = wxDefaultSize);
 
 private:
@@ -16,6 +16,10 @@ private:
     auto OnModelLoaded(wxCommandEvent &event) -> void;
     auto OnSelectAnimation(wxDataViewEvent &event) -> void;
 
+    auto BuildAnimationLayout(const std::vector<std::string> &animations) -> void;
+    auto BuildStaticLayout() -> void;
+
+    wxBoxSizer *sizer_ = nullptr;
     wxSplitterWindow *splitter_ = nullptr;
 
     wxPanel *controls_ = nullptr;

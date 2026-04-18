@@ -257,6 +257,14 @@ auto Model::GetAnimation(AnimationId handle) -> Animation * {
     return &animations_[handle.index()];
 }
 
+auto Model::GetSkin(SkinId handle) -> Skin * {
+    if (handle.index() > skins_.size()) {
+        return nullptr;
+    }
+
+    return &skins_[handle.index()];
+}
+
 auto Model::GetMesh(MeshId handle) const -> const Mesh * {
     if (handle.index() >= meshes_.size()) {
         return nullptr;
@@ -303,6 +311,14 @@ auto Model::GetAnimation(AnimationId handle) const -> const Animation * {
     }
 
     return &animations_[handle.index()];
+}
+
+auto Model::GetSkin(SkinId handle) const -> const Skin * {
+    if (handle.index() > skins_.size()) {
+        return nullptr;
+    }
+
+    return &skins_[handle.index()];
 }
 
 auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {

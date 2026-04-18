@@ -2,9 +2,11 @@
 
 #include "application.hpp"
 #include "hexview.hpp"
+#include "modelconv.hpp"
 
 #include "formats/gxt.hpp"
 #include "formats/gmo.hpp"
+#include "formats/act.hpp"
 
 enum MenuCommand {
     eMenuCommandFileOpenFile = 10000,
@@ -75,9 +77,13 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_bar->Append(menu_view, "&View");
     menu_bar->Append(menu_help, "&Help");
 
-    log_window_ = new wxLogWindow(nullptr, "Log window", false, false);
+    log_window_ = new wxLogWindow(this, "Log window", false, false);
+    wxLog::EnableLogging(true);
     wxLog::SetActiveTarget(log_window_);
+    wxLog::SetLogLevel(wxLOG_Message);
     log_window_->Show(false);
+
+    wxLogMessage("initialized application");
 
     SetMenuBar(menu_bar);
     CreateStatusBar();
@@ -174,10 +180,69 @@ auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> vo
 auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {}
 auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
+class GmoWxLogger : public gmo::GmoLogger {
+public:
+    auto log(std::string_view message) const -> void override {
+        wxLogMessage("libgmo message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
+class GmoLoader final : public ModelViewer::ILoader {
+public:
+    GmoLoader(std::span<const uint8_t> gmo_buffer) : gmo_buffer_{gmo_buffer} {}
+
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+        std::vector<gmo::GmoModel> gmo_model;
+
+        try {
+            GmoWxLogger logger;
+            gmo_model = gmo::LoadModelFromMemory(gmo_buffer_, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libgmo fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        wxLogMessage(wxString::Format("loaded %lld models from file", gmo_model.size()));
+
+        std::unique_ptr<render::Model> model;
+        try {
+            model = conv::ConvertGMO(gmo_model.front(), &device);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        return model;
+    }
+
+private:
+    std::span<const uint8_t> gmo_buffer_;
+};
+
+class ActLoader final : public ModelViewer::ILoader {
+public:
+    ActLoader(std::span<const uint8_t> act_buffer) : act_buffer_{act_buffer} {}
+
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+        std::vector<gmo::GmoModel> gmo_model;
+
+        try {
+            GmoWxLogger logger;
+            const auto act_model = act::LoadFromBinary(act_buffer_);
+            return conv::ConvertACT(act_model, &device);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libact fatal error: %s", e.what()));
+            return nullptr;
+        }
+    }
+
+private:
+    std::span<const uint8_t> act_buffer_;
+};
+
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
 
-    wxLogNull no_log;
     wxFile fs{full_path, wxFile::read};
     if (fs.Error()) {
         wxMessageBox(
@@ -214,7 +279,10 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
         texture_viewer_ = new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_);
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
-        model_viewer_ = new ModelDisplay(current_file_, notebook_right_);
+        model_viewer_ = new ModelDisplay(std::make_unique<GmoLoader>(current_file_), notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "Model view", true);
+    } else if (act::CheckHeader(current_file_)) {
+        model_viewer_ = new ModelDisplay(std::make_unique<ActLoader>(current_file_), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "Model view", true);
     }
 

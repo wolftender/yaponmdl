@@ -1,11 +1,6 @@
-#include <fstream>
 #include <fmt/format.h>
 
-#include "formats/gmo.hpp"
-#include "formats/act.hpp"
-
 #include "modelview.hpp"
-#include "modelconv.hpp"
 
 #include "generated/frag_mesh.glsl.h"
 #include "generated/vert_skinmesh.glsl.h"
@@ -18,15 +13,8 @@
 
 wxDEFINE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
 
-class GmoWxLogger : public gmo::GmoLogger {
-public:
-    auto log(std::string_view message) const -> void override {
-        wxLogMessage("libgmo message: %s ", wxString{message.data(), message.size()});
-    }
-};
-
-ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gmo_buffer)
-    : GLView{parent, attributes}, font_context_{kOpensans_ttf}, gmo_buffer_{gmo_buffer} {
+ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader)
+    : GLView{parent, attributes}, model_loader_{std::move(loader)}, font_context_{kOpensans_ttf} {
 
     camera_.SetNear(0.1f);
     camera_.SetFar(300.0f);
@@ -119,39 +107,30 @@ auto ModelViewer::OnInitializeGL() -> void {
         return;
     }
 
-    // std::vector<gmo::GmoModel> gmo_model;
-
-    // try {
-    //     GmoWxLogger logger;
-    //     gmo_model = gmo::LoadModelFromMemory(gmo_buffer_, &logger);
-    // } catch (const std::exception &e) {
-    //     wxLogError(wxString::Format("libgmo fatal error: %s", e.what()));
-    //     state_ = State::eInvalidModel;
-    //     return;
-    // }
-
-    // wxLogMessage(wxString::Format("loaded %lld models from file", gmo_model.size()));
-    std::fstream fs{"wakamo.act", std::ios::binary | std::ios::in};
-    if (!fs.good()) {
-        state_ = State::eGraphicsError;
+    if (!model_loader_) {
+        wxLogError("invalid model loader specified");
+        state_ = State::eInvalidModel;
         return;
     }
 
-    fs.seekg(0, std::ios::end);
-    const auto fsize = fs.tellg();
-    fs.seekg(0, std::ios::beg);
+    model_ = model_loader_->Load(*device_);
 
-    std::vector<uint8_t> buf;
-    buf.resize(fsize);
-    fs.read(reinterpret_cast<char *>(buf.data()), fsize);
+    if (!model_) {
+        wxLogError("no models were loaded");
+        state_ = State::eInvalidModel;
+        return;
+    }
 
     try {
-        const auto act_model = act::LoadFromBinary(buf);
-        model_ = conv::ConvertACT(act_model, device_.get());
-        controller_ = model_->CreateController(model_->MakeAnimationList()[4]);
+        const auto animations = model_->MakeAnimationList();
+        if (animations.empty()) {
+            default_pose_ = model_->CreatePose();
+        } else {
+            controller_ = model_->CreateController(model_->MakeAnimationList().front());
+        }
     } catch (const std::exception &e) {
-        wxLogError(wxString::Format("model viewer fatal error, cannot convert model: %s", e.what()));
-        state_ = State::eGraphicsError;
+        wxLogError(wxString::Format("cannot initialize model controller: %s", e.what()));
+        state_ = State::eInvalidModel;
         return;
     }
 
@@ -164,6 +143,7 @@ auto ModelViewer::OnInitializeGL() -> void {
     ProcessEvent(event);
 
     RefreshText();
+    state_ = State::eReady;
 }
 
 auto ModelViewer::OnRender() -> void {
@@ -194,7 +174,13 @@ auto ModelViewer::OnRender() -> void {
         frame_counter_++;
     }
 
-    controller_->Integrate(delta_time);
+    if (state_ != State::eReady) {
+        return;
+    }
+
+    if (controller_.has_value()) {
+        controller_->Integrate(delta_time);
+    }
 
     const auto current_size = GetSize();
     const auto f_sw = static_cast<float>(current_size.x);
@@ -211,6 +197,8 @@ auto ModelViewer::OnRender() -> void {
     glm::fmat4x4 transform = glm::fmat4x4{1.0f};
     if (model_ && controller_.has_value()) {
         model_->Render(controller_->GetPose(), transform);
+    } else if (model_ && default_pose_) {
+        model_->Render(*default_pose_.get(), transform);
     }
 
     device_->RenderFrame(camera_);

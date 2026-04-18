@@ -498,6 +498,7 @@ public:
     auto GetTexture(TextureId handle) -> Texture *;
     auto GetMaterial(MaterialId handle) -> Material *;
     auto GetAnimation(AnimationId handle) -> Animation *;
+    auto GetSkin(SkinId handle) -> Skin *;
 
     auto GetMesh(MeshId handle) const -> const Mesh *;
     auto GetAnimMesh(AnimatedMeshId handle) const -> const AnimatedMesh *;
@@ -505,6 +506,7 @@ public:
     auto GetTexture(TextureId handle) const -> const Texture *;
     auto GetMaterial(MaterialId handle) const -> const Material *;
     auto GetAnimation(AnimationId handle) const -> const Animation *;
+    auto GetSkin(SkinId handle) const -> const Skin *;
 
     std::vector<AnimationId> MakeAnimationList() const {
         std::vector<AnimationId> animations;

@@ -117,6 +117,8 @@ auto ConvertGMO(
                 break;
             }
         }
+
+        material_map[gmo_material_id] = model->AddMaterial(desc);
     }
 
     std::queue<uint32_t> node_queue;
@@ -143,6 +145,8 @@ auto ConvertGMO(
         }
 
         const auto node_id = model->AddNode(parent_id, gmo_bone.name).value();
+        node_map[gmo_bone_id] = node_id;
+
         auto node = model->GetNode(node_id);
 
         node->SetTranslation(gmo_bone.translation);
@@ -156,6 +160,140 @@ auto ConvertGMO(
 
     if (!node_queue.empty()) {
         throw std::runtime_error{"invalid model topology"};
+    }
+
+    const auto fnCreateSkin = [&](const gmo::GmoBone &gmo_bone) -> std::optional<render::Model::SkinId> {
+        if (gmo_bone.blend_bones.empty()) {
+            return std::nullopt;
+        }
+
+        render::Model::Skin skin;
+        for (uint32_t i = 0; i < gmo_bone.blend_bones.size(); ++i) {
+            if (!node_map[gmo_bone.blend_bones[i]].has_value()) {
+                throw std::runtime_error{"invalid relation between blend bones"};
+            }
+
+            skin.AddNodeRef(node_map[gmo_bone.blend_bones[i]].value(), gmo_bone.blend_offsets[i]);
+        }
+
+        return model->AddSkin(std::move(skin));
+    };
+
+    const auto fnCreateSkinFromSubset =
+        [&](const gmo::GmoBone &gmo_bone, const std::vector<uint32_t> &subset) -> std::optional<render::Model::SkinId> {
+        if (gmo_bone.blend_bones.empty()) {
+            return std::nullopt;
+        }
+
+        render::Model::Skin skin;
+        for (uint32_t i = 0; i < subset.size(); ++i) {
+            const auto idx = gmo_bone.blend_bones[subset[i]];
+            if (!node_map[gmo_bone.blend_bones[idx]].has_value()) {
+                throw std::runtime_error{"invalid relation between blend bones"};
+            }
+
+            skin.AddNodeRef(node_map[gmo_bone.blend_bones[idx]].value(), gmo_bone.blend_offsets[idx]);
+        }
+
+        return model->AddSkin(std::move(skin));
+    };
+
+    const auto fnParseGmoMesh = [&](render::Model::Node &node, const gmo::GmoMesh &gmo_mesh,
+                                    const gmo::GmoDrawArray &gmo_draw_array,
+                                    const gmo::GmoVertexArray &gmo_vertex_array) {
+        std::vector<render::AnimatedVertex> vertices;
+        vertices.reserve(gmo_vertex_array.vertices.size());
+
+        std::transform(
+            gmo_vertex_array.vertices.begin(), gmo_vertex_array.vertices.end(), std::back_inserter(vertices),
+            [&](const gmo::GmoVertex &gmo_vert) {
+            render::AnimatedVertex vertex;
+            vertex.position = gmo_vert.position;
+            vertex.normal = gmo_vert.normal;
+            vertex.color = gmo_vert.color;
+
+            return vertex;
+        });
+
+        auto material_id = material_map[gmo_mesh.material];
+        if (!material_id.has_value()) {
+            throw std::runtime_error{"invalid material was referenced in the gmo model"};
+        }
+
+        const auto mesh_id = model->AddMesh(vertices, gmo_draw_array.indices, material_id.value());
+        if (!mesh_id.has_value()) {
+            throw std::runtime_error{"failed to allocate mesh"};
+        }
+
+        node.AddMesh(mesh_id.value());
+    };
+
+    const auto fnParseGmoSkinmesh = [&](render::Model::Node &node, const gmo::GmoBone &gmo_bone,
+                                        const gmo::GmoMesh &gmo_mesh, const gmo::GmoDrawArray &gmo_draw_array,
+                                        const gmo::GmoVertexArray &gmo_vertex_array) {
+        const auto skin_id = gmo_mesh.blend_subset.empty() ? fnCreateSkin(gmo_bone)
+                                                           : fnCreateSkinFromSubset(gmo_bone, gmo_mesh.blend_subset);
+        const auto *skin = model->GetSkin(skin_id.value());
+
+        std::vector<render::AnimatedVertex> vertices;
+        vertices.reserve(gmo_vertex_array.vertices.size());
+
+        std::transform(
+            gmo_vertex_array.vertices.begin(), gmo_vertex_array.vertices.end(), std::back_inserter(vertices),
+            [&](const gmo::GmoVertex &gmo_vert) {
+            render::AnimatedVertex vertex;
+            vertex.position = gmo_vert.position;
+            vertex.normal = gmo_vert.normal;
+            vertex.color = gmo_vert.color;
+
+            for (uint32_t i = 0; i < 4 && i < skin->GetNodes().size(); ++i) {
+                vertex.weights[i] = gmo_vert.weights[i];
+                vertex.bones[i] = i;
+            }
+
+            return vertex;
+        });
+
+        auto material_id = material_map[gmo_mesh.material];
+        if (!material_id.has_value()) {
+            throw std::runtime_error{"invalid material was referenced in the gmo model"};
+        }
+
+        const auto mesh_id =
+            model->AddAnimatedMesh(vertices, gmo_draw_array.indices, material_id.value(), skin_id.value());
+        if (!mesh_id.has_value()) {
+            throw std::runtime_error{"failed to allocate mesh"};
+        }
+
+        node.AddAnimMesh(mesh_id.value());
+    };
+
+    for (const auto gmo_bone_id : nodes_with_meshes) {
+        const auto &gmo_bone = gmo_model.bones[gmo_bone_id];
+        auto node_id = node_map[gmo_bone_id];
+        auto &node = *model->GetNode(node_id.value());
+
+        // if the node has blend bones and offsets
+        // create a skin
+
+        for (const auto gmo_part_id : gmo_bone.draw_parts) {
+            const auto &gmo_part = gmo_model.parts[gmo_part_id];
+            for (const auto &gmo_mesh : gmo_part.meshes) {
+                for (const auto &gmo_draw_array : gmo_mesh.draw_arrays) {
+                    const auto &gmo_vertex_array = gmo_part.vertex_arrays[gmo_draw_array.array_id];
+                    const auto is_skinned =
+                        gmo::FlagHas(gmo_vertex_array.flags, gmo::GmoVertexArrayFlags::eHasWeights) &&
+                        !gmo_bone.blend_bones.empty();
+
+                    if (is_skinned) {
+                        // mesh is skinned, create a skin then
+                        fnParseGmoSkinmesh(node, gmo_bone, gmo_mesh, gmo_draw_array, gmo_vertex_array);
+                    } else {
+                        fnParseGmoMesh(node, gmo_mesh, gmo_draw_array, gmo_vertex_array);
+                    }
+                }
+            }
+        }
     }
 
     return model;

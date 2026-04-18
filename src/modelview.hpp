@@ -12,7 +12,13 @@ wxDECLARE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
 
 class ModelViewer : public GLView {
 public:
-    ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gmo_buffer);
+    class ILoader {
+    public:
+        virtual ~ILoader() noexcept = default;
+        virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> = 0;
+    };
+
+    ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader);
 
     auto GetFps() const -> uint32_t { return fps_; }
     auto GetModel() const -> const render::Model * { return model_.get(); }
@@ -53,6 +59,8 @@ private:
 
     auto RefreshText() -> void;
 
+    std::unique_ptr<ILoader> model_loader_ = nullptr;
+
     uint32_t frame_counter_ = 0;
     uint32_t anim_counter_ = 0;
     uint32_t fps_ = 0;
@@ -69,12 +77,11 @@ private:
     std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
     std::optional<glm::uvec2> pending_resize_ = std::nullopt;
 
-    std::span<const uint8_t> gmo_buffer_;
-
     render::AzimuthCamera camera_;
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
     std::unique_ptr<render::Model> model_;
     std::optional<render::Model::Controller> controller_;
+    std::unique_ptr<render::Model::Pose> default_pose_;
 
     State state_ = ModelViewer::State::eIdle;
 };

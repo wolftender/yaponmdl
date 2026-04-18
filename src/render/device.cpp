@@ -18,7 +18,9 @@ RenderDeviceOpenGL40::RenderDeviceOpenGL40(const gl::GLContext *context, const D
       static_shader_{context->GetExecutor(), description.vs_static_source, description.fs_static_source},
       skinned_shader_{context->GetExecutor(), description.vs_skinned_source, description.fs_skinned_source},
       post_shader_{context->GetExecutor(), description.vs_post_filter, description.fs_post_filter},
-      screen_quad_{MakeScreenQuad(context->GetExecutor())} {}
+      screen_quad_{MakeScreenQuad(context->GetExecutor())} {
+    RebuildFramebuffers(description.target_width, description.target_height);
+}
 
 auto RenderDeviceOpenGL40::CreateSkinningBuffer() -> SkinningBufferHandle {
     GL_IMPLEMENTATION_INTERNAL;
