@@ -1,15 +1,15 @@
 #include "modeldisplay.hpp"
 
 ModelDisplay::ModelDisplay(
-    std::unique_ptr<ModelViewer::ILoader> loader, wxWindow *parent, wxWindowID id, const wxPoint &position,
-    const wxSize &size)
+    std::unique_ptr<ModelViewer::ILoader> loader, std::unique_ptr<ModelViewer::ICameraController> camera_controller,
+    wxWindow *parent, wxWindowID id, const wxPoint &position, const wxSize &size)
     : wxWindow{parent, id, position, size} {
     sizer_ = new wxBoxSizer(wxHORIZONTAL);
 
     SetMinSize(wxSize{600, 200});
     sizer_->SetMinSize(600, 200);
 
-    viewer_ = new ModelViewer(this, GLView::CreateAttributes(), std::move(loader));
+    viewer_ = new ModelViewer(this, GLView::CreateAttributes(), std::move(loader), std::move(camera_controller));
 
     // this callback has to be registered early because it will be called as soon as gl context is initialized
     viewer_->Bind(MODEL_VIEWER_LOADED_MODEL, &ModelDisplay::OnModelLoaded, this);

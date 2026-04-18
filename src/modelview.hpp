@@ -18,7 +18,41 @@ public:
         virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> = 0;
     };
 
-    ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader);
+    class ICameraController {
+    public:
+        virtual ~ICameraController() noexcept = default;
+
+        virtual auto GetCamera() const -> const render::hal::ICamera & = 0;
+        virtual auto OnUpdateSize([[maybe_unused]] float width, [[maybe_unused]] float height) -> void {}
+        virtual auto OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {}
+        virtual auto OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {}
+    };
+
+    class AzimuthCameraController : public ICameraController {
+    public:
+        AzimuthCameraController();
+
+        virtual auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
+
+        auto OnUpdateSize(float width, float height) -> void override;
+        auto OnMouseMotion(wxMouseEvent &event) -> void override;
+        auto OnMouseScroll(wxMouseEvent &event) -> void override;
+
+    private:
+        float zoom_ = 1.0f;
+        std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
+        render::AzimuthCamera camera_;
+    };
+
+    class OrthoCameraController : public ICameraController {};
+
+    static auto MakeAzimuthCamera() -> std::unique_ptr<ICameraController> {
+        return std::make_unique<AzimuthCameraController>();
+    }
+
+    ModelViewer(
+        wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
+        std::unique_ptr<ICameraController> camera_controller = MakeAzimuthCamera());
 
     auto GetFps() const -> uint32_t { return fps_; }
     auto GetModel() const -> const render::Model * { return model_.get(); }
@@ -66,18 +100,16 @@ private:
     uint32_t fps_ = 0;
     float frame_timer_ = 0.0f;
 
+    std::unique_ptr<ICameraController> camera_controller_;
+
     render::FontContext font_context_;
     std::optional<gl::ShaderProgram> text_shader_;
     std::optional<render::FontContext::TextObject> test_text_;
 
-    float zoom_ = 1.0f;
+    std::optional<glm::uvec2> pending_resize_ = std::nullopt;
     std::unique_ptr<AnimationTimer> animation_timer_ = nullptr;
     std::chrono::steady_clock::time_point last_frame_;
 
-    std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
-    std::optional<glm::uvec2> pending_resize_ = std::nullopt;
-
-    render::AzimuthCamera camera_;
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
     std::unique_ptr<render::Model> model_;
     std::optional<render::Model::Controller> controller_;

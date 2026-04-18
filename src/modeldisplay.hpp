@@ -8,8 +8,10 @@
 class ModelDisplay : public wxWindow {
 public:
     ModelDisplay(
-        std::unique_ptr<ModelViewer::ILoader> loader, wxWindow *parent = nullptr, wxWindowID id = wxID_ANY,
-        const wxPoint &position = wxDefaultPosition, const wxSize &size = wxDefaultSize);
+        std::unique_ptr<ModelViewer::ILoader> loader,
+        std::unique_ptr<ModelViewer::ICameraController> camera_controller = ModelViewer::MakeAzimuthCamera(),
+        wxWindow *parent = nullptr, wxWindowID id = wxID_ANY, const wxPoint &position = wxDefaultPosition,
+        const wxSize &size = wxDefaultSize);
 
 private:
     auto BuildModelControls() -> void;

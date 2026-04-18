@@ -93,6 +93,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/hexview.cpp
     ${PROGRAM_SRC_DIR}/glview.cpp
     ${PROGRAM_SRC_DIR}/textureview.cpp
+    ${PROGRAM_SRC_DIR}/resourcestore.cpp
     ${PROGRAM_SRC_DIR}/modelview.cpp
     ${PROGRAM_SRC_DIR}/modelconv.cpp
     ${PROGRAM_SRC_DIR}/modeldisplay.cpp

@@ -1,23 +1,57 @@
 #include <fmt/format.h>
 
 #include "modelview.hpp"
-
-#include "generated/frag_mesh.glsl.h"
-#include "generated/vert_skinmesh.glsl.h"
-#include "generated/vert_staticmesh.glsl.h"
-#include "generated/vert_postfilter.glsl.h"
-#include "generated/frag_postfilter.glsl.h"
-#include "generated/vert_text.glsl.h"
-#include "generated/frag_text.glsl.h"
-#include "generated/opensans.ttf.h"
+#include "resourcestore.hpp"
 
 wxDEFINE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
 
-ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader)
-    : GLView{parent, attributes}, model_loader_{std::move(loader)}, font_context_{kOpensans_ttf} {
-
+ModelViewer::AzimuthCameraController::AzimuthCameraController() {
     camera_.SetNear(0.1f);
     camera_.SetFar(300.0f);
+    camera_.SetDistance(zoom_);
+    camera_.SetCenter({0.0f, 0.5f, 0.0f});
+}
+
+auto ModelViewer::AzimuthCameraController::OnUpdateSize(float width, float height) -> void {
+    camera_.SetAspect(width / height);
+}
+
+auto ModelViewer::AzimuthCameraController::OnMouseMotion(wxMouseEvent &event) -> void {
+    glm::ivec2 current_mouse_position;
+    event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
+
+    if (event.Dragging() && event.LeftIsDown()) {
+        if (!prev_mouse_pos_.has_value()) {
+            prev_mouse_pos_ = current_mouse_position;
+            return;
+        }
+
+        const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
+        prev_mouse_pos_ = current_mouse_position;
+
+        const auto delta_yaw = static_cast<float>(delta_position.x) / 300.0f;
+        const auto delta_pitch = static_cast<float>(delta_position.y) / 300.0f;
+
+        camera_.SetElevation(camera_.GetElevation() - delta_pitch);
+        camera_.SetAzimuth(camera_.GetAzimuth() - delta_yaw);
+    } else if (event.Dragging() && event.MiddleIsDown()) {
+
+    } else {
+        prev_mouse_pos_ = std::nullopt;
+    }
+}
+
+auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) -> void {
+    auto delta = event.GetWheelRotation() / event.GetWheelDelta();
+    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+    camera_.SetDistance(zoom_);
+}
+
+ModelViewer::ModelViewer(
+    wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
+    std::unique_ptr<ICameraController> camera_controller)
+    : GLView{parent, attributes}, model_loader_{std::move(loader)}, camera_controller_{std::move(camera_controller)},
+      font_context_{memoryresource::GetFontOpensansTtf()} {
 
     animation_timer_ = std::make_unique<AnimationTimer>(this);
 
@@ -69,18 +103,12 @@ auto ModelViewer::OnInitializeGL() -> void {
     GL_IMPLEMENTATION_INTERNAL;
 
     render::hal::RenderDeviceOpenGL40::Description hal_desc = {
-        .fs_static_source =
-            std::string_view{reinterpret_cast<const char *>(kFragMesh_glsl.data()), kFragMesh_glsl.size()},
-        .vs_static_source =
-            std::string_view{reinterpret_cast<const char *>(kVertStaticmesh_glsl.data()), kVertStaticmesh_glsl.size()},
-        .fs_skinned_source =
-            std::string_view{reinterpret_cast<const char *>(kFragMesh_glsl.data()), kFragMesh_glsl.size()},
-        .vs_skinned_source =
-            std::string_view{reinterpret_cast<const char *>(kVertSkinmesh_glsl.data()), kVertSkinmesh_glsl.size()},
-        .fs_post_filter =
-            std::string_view{reinterpret_cast<const char *>(kFragPostfilter_glsl.data()), kFragPostfilter_glsl.size()},
-        .vs_post_filter =
-            std::string_view{reinterpret_cast<const char *>(kVertPostfilter_glsl.data()), kVertPostfilter_glsl.size()},
+        .fs_static_source = memoryresource::GetFragShaderMesh(),
+        .vs_static_source = memoryresource::GetVertShaderStaticMesh(),
+        .fs_skinned_source = memoryresource::GetFragShaderMesh(),
+        .vs_skinned_source = memoryresource::GetVertShaderSkinnedMesh(),
+        .fs_post_filter = memoryresource::GetFragShaderPost(),
+        .vs_post_filter = memoryresource::GetVertShaderPost(),
         .target_width = 640,
         .target_height = 480,
     };
@@ -88,9 +116,7 @@ auto ModelViewer::OnInitializeGL() -> void {
     try {
         text_shader_.emplace(
             gl::ShaderProgram{
-                GetContext().GetExecutor(),
-                std::string_view{reinterpret_cast<const char *>(kVertText_glsl.data()), kVertText_glsl.size()},
-                std::string_view{reinterpret_cast<const char *>(kFragText_glsl.data()), kFragText_glsl.size()}});
+                GetContext().GetExecutor(), memoryresource::GetVertShaderText(), memoryresource::GetFragShaderText()});
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("model viewer fatal error, cannot initialize text rendering: %s", e.what()));
         state_ = State::eGraphicsError;
@@ -133,8 +159,6 @@ auto ModelViewer::OnInitializeGL() -> void {
         state_ = State::eInvalidModel;
         return;
     }
-
-    camera_.SetDistance(4.0f);
 
     animation_timer_->Begin();
     last_frame_ = std::chrono::steady_clock::now();
@@ -190,18 +214,17 @@ auto ModelViewer::OnRender() -> void {
     GL_CHECK(glClearColor(0.0f, 0.0f, 0.0f, 1.0f));
     GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 
-    camera_.SetAspect(f_sw / f_sh);
-    camera_.SetDistance(zoom_);
-    camera_.SetCenter({0.0f, 0.5f, 0.0f});
+    camera_controller_->OnUpdateSize(f_sw, f_sh);
 
     glm::fmat4x4 transform = glm::fmat4x4{1.0f};
+
     if (model_ && controller_.has_value()) {
         model_->Render(controller_->GetPose(), transform);
     } else if (model_ && default_pose_) {
         model_->Render(*default_pose_.get(), transform);
     }
 
-    device_->RenderFrame(camera_);
+    device_->RenderFrame(camera_controller_->GetCamera());
 
     // clang-format off
     const glm::fmat4x4 text_matrix = {
@@ -236,35 +259,12 @@ auto ModelViewer::OnSize(wxSizeEvent &event) -> void {
 auto ModelViewer::OnIdle([[maybe_unused]] wxIdleEvent &event) -> void { Render(); }
 
 auto ModelViewer::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
-    auto delta = event.GetWheelRotation() / event.GetWheelDelta();
-    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+    camera_controller_->OnMouseScroll(event);
 }
 
 auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
     event.Skip();
-
-    glm::ivec2 current_mouse_position;
-    event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
-
-    if (event.Dragging() && event.LeftIsDown()) {
-        if (!prev_mouse_pos_.has_value()) {
-            prev_mouse_pos_ = current_mouse_position;
-            return;
-        }
-
-        const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
-        prev_mouse_pos_ = current_mouse_position;
-
-        const auto delta_yaw = static_cast<float>(delta_position.x) / 300.0f;
-        const auto delta_pitch = static_cast<float>(delta_position.y) / 300.0f;
-
-        camera_.SetElevation(camera_.GetElevation() - delta_pitch);
-        camera_.SetAzimuth(camera_.GetAzimuth() - delta_yaw);
-    } else if (event.Dragging() && event.MiddleIsDown()) {
-
-    } else {
-        prev_mouse_pos_ = std::nullopt;
-    }
+    camera_controller_->OnMouseMotion(event);
 }
 
 auto ModelViewer::RefreshText() -> void {

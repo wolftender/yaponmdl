@@ -279,10 +279,12 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
         texture_viewer_ = new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_);
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
-        model_viewer_ = new ModelDisplay(std::make_unique<GmoLoader>(current_file_), notebook_right_);
+        model_viewer_ = new ModelDisplay(
+            std::make_unique<GmoLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "Model view", true);
     } else if (act::CheckHeader(current_file_)) {
-        model_viewer_ = new ModelDisplay(std::make_unique<ActLoader>(current_file_), notebook_right_);
+        model_viewer_ = new ModelDisplay(
+            std::make_unique<ActLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "Model view", true);
     }
 

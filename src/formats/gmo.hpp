@@ -97,15 +97,12 @@ struct GmoBone {
     glm::fvec3 pivot = {0.0f, 0.0f, 0.0f};
     glm::fvec3 translation = {0.0f, 0.0f, 0.0f};
     glm::fquat rotation = {1.0f, 0.0f, 0.0f, 0.0f};
-    glm::fvec3 scale = {0.0f, 0.0f, 0.0f};
+    glm::fvec3 scale = {1.0f, 1.0f, 1.0f};
 
     glm::fvec3 bounding_min = {0.0f, 0.0f, 0.0f};
     glm::fvec3 bounding_max = {0.0f, 0.0f, 0.0f};
 
     glm::fmat4x4 local_matrix = {1.0f};
-    glm::fmat4x4 stack_matrix = {1.0f};
-    glm::fvec3 stack_scale = {0.0f, 0.0f, 0.0f};
-    glm::fmat4x4 world_matrix = {1.0f};
 };
 
 // clang-format off
