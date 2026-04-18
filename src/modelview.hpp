@@ -8,9 +8,18 @@
 #include "render/device.hpp"
 #include "render/text.hpp"
 
+wxDECLARE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
+
 class ModelViewer : public GLView {
 public:
     ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gmo_buffer);
+
+    auto GetFps() const -> uint32_t { return fps_; }
+    auto GetModel() const -> const render::Model * { return model_.get(); }
+    auto GetAnimationList() const -> std::vector<std::string>;
+
+    auto GetAnimationIndex() const -> uint32_t { return anim_counter_; }
+    auto SetAnimationIndex(uint32_t index) -> void;
 
 protected:
     auto OnInitializeGL() -> void override;

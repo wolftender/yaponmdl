@@ -250,7 +250,7 @@ auto Model::GetMaterial(MaterialId handle) -> Material * {
 }
 
 auto Model::GetAnimation(AnimationId handle) -> Animation * {
-    if (handle.index() >= materials_.size()) {
+    if (handle.index() >= animations_.size()) {
         return nullptr;
     }
 
@@ -298,7 +298,7 @@ auto Model::GetMaterial(MaterialId handle) const -> const Material * {
 }
 
 auto Model::GetAnimation(AnimationId handle) const -> const Animation * {
-    if (handle.index() >= materials_.size()) {
+    if (handle.index() >= animations_.size()) {
         return nullptr;
     }
 

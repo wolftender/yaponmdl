@@ -1,5 +1,5 @@
 #include <fstream>
-#include <fmt/xchar.h>
+#include <fmt/format.h>
 
 #include "formats/gmo.hpp"
 #include "formats/act.hpp"
@@ -15,6 +15,8 @@
 #include "generated/vert_text.glsl.h"
 #include "generated/frag_text.glsl.h"
 #include "generated/opensans.ttf.h"
+
+wxDEFINE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
 
 class GmoWxLogger : public gmo::GmoLogger {
 public:
@@ -35,6 +37,44 @@ ModelViewer::ModelViewer(wxWindow *parent, const wxGLAttributes &attributes, std
     Bind(wxEVT_IDLE, &ModelViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &ModelViewer::OnMouseScroll, this);
     Bind(wxEVT_MOTION, &ModelViewer::OnMouseMotion, this);
+}
+
+auto ModelViewer::GetAnimationList() const -> std::vector<std::string> {
+    if (!model_) {
+        return {};
+    }
+
+    std::vector<std::string> animation_list;
+    const auto animations = model_->MakeAnimationList();
+
+    animation_list.reserve(animations.size());
+
+    for (const auto &animation_id : animations) {
+        const auto *animation = model_->GetAnimation(animation_id);
+        if (!animation) {
+            wxLogError("model assertion failed for animation list");
+            return {};
+        }
+
+        animation_list.push_back(animation->GetName());
+    }
+
+    return animation_list;
+}
+
+auto ModelViewer::SetAnimationIndex(uint32_t index) -> void {
+    const auto animations = model_->MakeAnimationList();
+    if (index >= animations.size()) {
+        anim_counter_ = animations.size() - 1;
+    } else {
+        anim_counter_ = index;
+    }
+
+    if (controller_) {
+        controller_->SetAnimation(animations[anim_counter_]);
+    }
+
+    RefreshText();
 }
 
 auto ModelViewer::OnInitializeGL() -> void {
@@ -119,6 +159,11 @@ auto ModelViewer::OnInitializeGL() -> void {
 
     animation_timer_->Begin();
     last_frame_ = std::chrono::steady_clock::now();
+
+    wxCommandEvent event{MODEL_VIEWER_LOADED_MODEL, GetId()};
+    ProcessEvent(event);
+
+    RefreshText();
 }
 
 auto ModelViewer::OnRender() -> void {
@@ -195,7 +240,11 @@ auto ModelViewer::OnRender() -> void {
     });
 }
 
-auto ModelViewer::OnSize(wxSizeEvent &event) -> void { pending_resize_ = {event.GetSize().x, event.GetSize().y}; }
+auto ModelViewer::OnSize(wxSizeEvent &event) -> void {
+    event.Skip();
+    pending_resize_ = {event.GetSize().x, event.GetSize().y};
+}
+
 auto ModelViewer::OnIdle([[maybe_unused]] wxIdleEvent &event) -> void { Render(); }
 
 auto ModelViewer::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
@@ -204,6 +253,8 @@ auto ModelViewer::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
 }
 
 auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
+    event.Skip();
+
     glm::ivec2 current_mouse_position;
     event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
 
@@ -229,10 +280,27 @@ auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
 }
 
 auto ModelViewer::RefreshText() -> void {
-    std::u32string content = fmt::format(U"fps: {}\nanimation: {}", fps_, anim_counter_);
+    const auto animations = model_ ? model_->MakeAnimationList() : std::vector<render::Model::AnimationId>{};
+    std::string content;
+
+    if (animations.size() != 0 && anim_counter_ < animations.size()) {
+        content =
+            fmt::format("fps: {}\nanimation: {}", fps_, model_->GetAnimation(animations[anim_counter_])->GetName());
+    } else {
+        content = fmt::format("fps: {}\nanimation: n/a", fps_);
+    }
+
+    std::u32string codepoints;
+    const wxString wxstr{content};
+
+    codepoints.reserve(wxstr.Length());
+    for (const wxUniChar unicode_char : wxstr) {
+        codepoints.push_back(unicode_char.GetValue());
+    }
 
     try {
-        test_text_.emplace(font_context_.CreateTextObject(GetContext().GetExecutor(), {10.0f, 10.0f}, 32.0f, content));
+        test_text_.emplace(
+            font_context_.CreateTextObject(GetContext().GetExecutor(), {10.0f, 10.0f}, 32.0f, codepoints));
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("cannot update text: %s", e.what()));
     }

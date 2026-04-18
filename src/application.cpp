@@ -2,16 +2,17 @@
 
 #include "application.hpp"
 #include "hexview.hpp"
-#include "textureview.hpp"
-#include "modelview.hpp"
 
 #include "formats/gxt.hpp"
 #include "formats/gmo.hpp"
 
 enum MenuCommand {
-    eMenuCommandFileOpenFile,
+    eMenuCommandFileOpenFile = 10000,
     eMenuCommandFileOpenDirectory,
-    eMenuCommandViewShowLogs,
+    eMenuCommandViewShowLogs = 20000,
+    eMenuCommandViewZoomIn,
+    eMenuCommandViewZoomOut,
+    eMenuCommandViewResetView,
 };
 
 DirectoryViewControl::DirectoryViewControl(
@@ -61,6 +62,10 @@ ModelBrowserFrame::ModelBrowserFrame()
 
     wxMenu *menu_view = new wxMenu;
     menu_view->Append(eMenuCommandViewShowLogs, "&Show logs", "Displays the log window");
+    menu_view->AppendSeparator();
+    menu_view->Append(eMenuCommandViewZoomIn, "Zoom in", "Increase zoom");
+    menu_view->Append(eMenuCommandViewZoomOut, "Zoom out", "Decrease zoom");
+    menu_view->Append(eMenuCommandViewResetView, "Reset view", "Restores view to the defaults");
 
     wxMenu *menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
@@ -78,9 +83,12 @@ ModelBrowserFrame::ModelBrowserFrame()
     CreateStatusBar();
 
     wxBoxSizer *main_sizer = new wxBoxSizer(wxHORIZONTAL);
-    main_sizer->SetMinSize(640, 480);
+    main_sizer->SetMinSize(900, 600);
 
-    splitter_ = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxSize{500, 500}, wxSP_3D | wxSP_LIVE_UPDATE);
+    splitter_ =
+        new ConstrainedSplitter(this, wxID_ANY, wxDefaultPosition, wxSize{500, 500}, wxSP_3D | wxSP_LIVE_UPDATE);
+    splitter_->SetMinimumWindow1Size(300);
+    splitter_->SetMinimumWindow2Size(600);
     splitter_->SetMinimumPaneSize(300);
 
     notebook_left_ = new wxNotebook(splitter_, wxID_ANY);
@@ -99,6 +107,7 @@ ModelBrowserFrame::ModelBrowserFrame()
 
     hex_viewer_ = nullptr;
 
+    EnableViewerOptions(false);
     SetSizerAndFit(main_sizer);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
@@ -107,15 +116,20 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
+    notebook_right_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &ModelBrowserFrame::OnPageChanged, this);
 }
 
 auto ModelBrowserFrame::CloseCurrentFile() -> void {
+    EnableViewerOptions(false);
+
     if (hex_viewer_) {
         hex_viewer_->ClearBufferView();
         hex_viewer_->Hide();
     }
 
     hex_viewer_ = nullptr;
+    model_viewer_ = nullptr;
+    texture_viewer_ = nullptr;
 
     // gl context needs to be shown in order to allow for cleanup
     // this probably shold be fixed in a different way
@@ -197,15 +211,32 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
     hex_viewer_->Show();
 
     if (gxt::CheckHeader(current_file_)) {
-        notebook_right_->AddPage(
-            new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Texture view", true);
+        texture_viewer_ = new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_);
+        notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
-        notebook_right_->AddPage(
-            new ModelViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Model view", true);
+        model_viewer_ = new ModelDisplay(current_file_, notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "Model view", true);
     }
 
-    notebook_right_->AddPage(hex_viewer_, "Hex view", true);
-    notebook_right_->ChangeSelection(0);
+    notebook_right_->AddPage(hex_viewer_, "Hex view", false);
+}
+
+auto ModelBrowserFrame::OnPageChanged([[maybe_unused]] wxBookCtrlEvent &event) -> void {
+    auto *widget = notebook_right_->GetCurrentPage();
+
+    if (widget == model_viewer_ && model_viewer_ != nullptr) {
+        EnableViewerOptions(true);
+    } else if (widget == texture_viewer_ && texture_viewer_ != nullptr) {
+        EnableViewerOptions(true);
+    } else {
+        EnableViewerOptions(false);
+    }
+}
+
+auto ModelBrowserFrame::EnableViewerOptions(bool enable) -> void {
+    GetMenuBar()->Enable(eMenuCommandViewZoomIn, enable);
+    GetMenuBar()->Enable(eMenuCommandViewZoomOut, enable);
+    GetMenuBar()->Enable(eMenuCommandViewResetView, enable);
 }
 
 wxIMPLEMENT_APP(ModelBrowserApplication);
