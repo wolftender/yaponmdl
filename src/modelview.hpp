@@ -32,7 +32,7 @@ public:
     public:
         AzimuthCameraController();
 
-        virtual auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
+        auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
 
         auto OnUpdateSize(float width, float height) -> void override;
         auto OnMouseMotion(wxMouseEvent &event) -> void override;
@@ -44,10 +44,28 @@ public:
         render::AzimuthCamera camera_;
     };
 
-    class OrthoCameraController : public ICameraController {};
+    class OrthoCameraController : public ICameraController {
+    public:
+        OrthoCameraController();
+
+        auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
+
+        auto OnUpdateSize(float width, float height) -> void override;
+        auto OnMouseMotion(wxMouseEvent &event) -> void override;
+        auto OnMouseScroll(wxMouseEvent &event) -> void override;
+
+    private:
+        float zoom_ = 1.0f;
+        glm::fvec2 size_;
+        render::OrthoCamera camera_;
+    };
 
     static auto MakeAzimuthCamera() -> std::unique_ptr<ICameraController> {
         return std::make_unique<AzimuthCameraController>();
+    }
+
+    static auto MakeOrthoCamera() -> std::unique_ptr<ICameraController> {
+        return std::make_unique<OrthoCameraController>();
     }
 
     ModelViewer(

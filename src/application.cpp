@@ -280,7 +280,7 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GmoLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
+            std::make_unique<GmoLoader>(current_file_), ModelViewer::MakeOrthoCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "Model view", true);
     } else if (act::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(

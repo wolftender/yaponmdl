@@ -47,6 +47,24 @@ auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) ->
     camera_.SetDistance(zoom_);
 }
 
+ModelViewer::OrthoCameraController::OrthoCameraController() {
+    camera_.SetNear(-1.0f);
+    camera_.SetFar(100.0f);
+}
+
+auto ModelViewer::OrthoCameraController::OnUpdateSize(float width, float height) -> void {
+    size_ = {width, height};
+    camera_.SetSize(size_ * zoom_);
+}
+
+auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {}
+
+auto ModelViewer::OrthoCameraController::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
+    auto delta = event.GetWheelRotation() / event.GetWheelDelta();
+    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+    camera_.SetSize(size_ * zoom_);
+}
+
 ModelViewer::ModelViewer(
     wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
     std::unique_ptr<ICameraController> camera_controller)

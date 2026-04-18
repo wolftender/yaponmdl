@@ -121,6 +121,66 @@ inline auto AzimuthCamera::CalculateView() const -> void {
         view_inv_ = glm::rotate(view_inv_, azimuth_, glm::fvec3{0.0f, 1.0f, 0.0f});
         view_inv_ = glm::rotate(view_inv_, elevation_, glm::fvec3{1.0f, 0.0f, 0.0f});
         view_inv_ = glm::translate(view_inv_, glm::fvec3{0.0f, 0.0f, distance_});
+
+        dirty_bit_view_ = false;
+    }
+}
+
+auto OrthoCamera::SetCenter(const glm::fvec3 &center) -> void {
+    center_ = center;
+    dirty_bit_view_ = true;
+}
+
+auto OrthoCamera::SetSize(const glm::fvec2 &size) -> void {
+    size_ = size;
+    dirty_bit_proj_ = true;
+}
+
+auto OrthoCamera::SetNear(float near) -> void {
+    near_ = near;
+    dirty_bit_proj_ = true;
+}
+
+auto OrthoCamera::SetFar(float far) -> void {
+    far_ = far;
+    dirty_bit_proj_ = true;
+}
+
+auto OrthoCamera::GetProjection() const -> const glm::fmat4x4 & {
+    CalculateProjection();
+    return projection_;
+}
+
+auto OrthoCamera::GetView() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_;
+}
+
+auto OrthoCamera::GetProjectionInv() const -> const glm::fmat4x4 & {
+    CalculateProjection();
+    return projection_inv_;
+}
+
+auto OrthoCamera::GetViewInv() const -> const glm::fmat4x4 & {
+    CalculateView();
+    return view_inv_;
+}
+
+inline auto OrthoCamera::CalculateView() const -> void {
+    if (dirty_bit_view_) {
+        view_ = glm::translate(glm::fmat4x4{1.0f}, -center_);
+        view_inv_ = glm::translate(glm::fmat4x4{1.0f}, center_);
+        dirty_bit_view_ = false;
+    }
+}
+
+inline auto OrthoCamera::CalculateProjection() const -> void {
+    if (dirty_bit_proj_) {
+        const auto half_size = size_ * 0.5f;
+        projection_ = glm::ortho(-half_size.x, half_size.x, -half_size.y, half_size.y, near_, far_);
+        projection_inv_ = glm::inverse(view_);
+
+        dirty_bit_proj_ = false;
     }
 }
 
