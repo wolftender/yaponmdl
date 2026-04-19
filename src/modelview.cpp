@@ -121,17 +121,6 @@ auto ModelViewer::SetAnimationIndex(uint32_t index) -> void {
 auto ModelViewer::OnInitializeGL() -> void {
     GL_IMPLEMENTATION_INTERNAL;
 
-    render::hal::RenderDeviceOpenGL40::Description hal_desc = {
-        .fs_static_source = memoryresource::GetFragShaderMesh(),
-        .vs_static_source = memoryresource::GetVertShaderStaticMesh(),
-        .fs_skinned_source = memoryresource::GetFragShaderMesh(),
-        .vs_skinned_source = memoryresource::GetVertShaderSkinnedMesh(),
-        .fs_post_filter = memoryresource::GetFragShaderPost(),
-        .vs_post_filter = memoryresource::GetVertShaderPost(),
-        .target_width = 640,
-        .target_height = 480,
-    };
-
     try {
         text_shader_.emplace(
             gl::ShaderProgram{
@@ -145,7 +134,8 @@ auto ModelViewer::OnInitializeGL() -> void {
     RefreshText();
 
     try {
-        device_ = std::make_unique<render::hal::RenderDeviceOpenGL40>(&GetContext(), hal_desc);
+        device_ = std::make_unique<render::hal::RenderDeviceOpenGL40>(
+            &GetContext(), render::hal::RenderDeviceOpenGL40::RendererType::eBaseSceneRenderer, 640, 480);
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("model viewer fatal error, cannot initialize renderer device: %s", e.what()));
         state_ = State::eGraphicsError;

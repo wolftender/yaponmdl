@@ -1,8 +1,136 @@
 #include <fmt/format.h>
 
+#include "resourcestore.hpp"
 #include "render/device.hpp"
 
 namespace render::hal {
+
+RenderDeviceOpenGL40::BaseSceneRenderer::BaseSceneRenderer(
+    RenderDeviceOpenGL40 *device, uint32_t target_width, uint32_t target_height)
+    : device_{device},
+      static_shader_{
+          device_->context_->GetExecutor(),
+          memoryresource::GetVertShaderStaticMesh(),
+          memoryresource::GetFragShaderMesh(),
+      },
+      skinned_shader_{
+          device_->context_->GetExecutor(),
+          memoryresource::GetVertShaderSkinnedMesh(),
+          memoryresource::GetFragShaderMesh(),
+      },
+      post_shader_{
+          device_->context_->GetExecutor(),
+          memoryresource::GetVertShaderPost(),
+          memoryresource::GetFragShaderPost(),
+      },
+      screen_quad_{RenderDeviceOpenGL40::MakeScreenQuad(device_->context_->GetExecutor())} {
+    RebuildFramebuffers(target_width, target_height);
+}
+
+auto RenderDeviceOpenGL40::BaseSceneRenderer::Execute(const ICamera &camera) -> void {
+    GL_IMPLEMENTATION_INTERNAL;
+
+    GL_CHECK(glDisable(GL_CULL_FACE));
+    GL_CHECK(glEnable(GL_DEPTH_TEST));
+    GL_CHECK(glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE));
+
+    color_pass_fb_->Use([&]() {
+        color_pass_fb_->ClearColorDepth(glm::fvec4{0.207f, 0.36f, 0.64f, 1.0f});
+        GeometryPass(camera);
+    });
+
+    GL_CHECK(glDisable(GL_DEPTH_TEST));
+
+    post_shader_.Use([&](const gl::ShaderProgram::Context &context) {
+        color_target_->Bind(0);
+        context.SetSampler("u_texture", 0);
+        screen_quad_.Draw();
+    });
+}
+
+auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera) -> void {
+    GL_IMPLEMENTATION_INTERNAL;
+
+    static_shader_.Use([&](const gl::ShaderProgram::Context &context) {
+        context.SetUniform("u_view", camera.GetView());
+        context.SetUniform("u_projection", camera.GetProjection());
+        context.SetUniform("u_diffuse", 0);
+
+        for (uint32_t draw_id = 0; draw_id < device_->static_draws_.GetFill(); ++draw_id) {
+            const auto &draw = device_->static_draws_[draw_id];
+            const auto *mesh = device_->mesh_pool_.Get(draw->mesh.index());
+
+            if (!mesh) {
+                throw std::runtime_error{"invalid mesh id supplied for draw"};
+            }
+
+            if (draw->diffuse_map.has_value()) {
+                const auto *texture = device_->texture_pool_.Get(draw->diffuse_map->index());
+                if (texture) {
+                    context.SetSampler("u_diffuse", 0);
+                    texture->Bind(0);
+                }
+            }
+
+            context.SetUniform("u_world", draw->world_matrix);
+            mesh->Draw();
+
+            GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
+        }
+    });
+
+    skinned_shader_.Use([&](const gl::ShaderProgram::Context &context) {
+        context.SetUniform("u_view", camera.GetView());
+        context.SetUniform("u_projection", camera.GetProjection());
+        context.SetUniform("u_diffuse", 0);
+
+        for (uint32_t draw_id = 0; draw_id < device_->skinned_draws_.GetFill(); ++draw_id) {
+            const auto &draw = device_->skinned_draws_[draw_id];
+            const auto *mesh = device_->anim_mesh_pool_.Get(draw->mesh.index());
+            auto *skin_buffer = device_->skinning_pool_.Get(draw->skinning_buffer.index());
+
+            if (!mesh) {
+                throw std::runtime_error{"invalid mesh id supplied for draw"};
+            }
+
+            if (draw->diffuse_map.has_value()) {
+                const auto *texture = device_->texture_pool_.Get(draw->diffuse_map->index());
+                if (texture) {
+                    context.SetSampler("u_diffuse", 0);
+                    texture->Bind(0);
+                }
+            }
+
+            skin_buffer->ExecuteUpload();
+
+            context.SetBufferBase("u_bones", *skin_buffer);
+            context.SetUniform("u_world", draw->world_matrix);
+            mesh->Draw();
+
+            GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
+        }
+    });
+}
+
+auto RenderDeviceOpenGL40::BaseSceneRenderer::Resize(uint32_t width, uint32_t height) -> void {
+    RebuildFramebuffers(width, height);
+}
+
+auto RenderDeviceOpenGL40::BaseSceneRenderer::RebuildFramebuffers(uint32_t width, uint32_t height) -> void {
+    GL_IMPLEMENTATION_INTERNAL;
+
+    color_target_ = std::make_shared<gl::Texture>(
+        device_->context_->GetExecutor(), width, height, 1, gl::Texture::Parameters{gl::TextureFormat::eRGBA8});
+    depth_target_ = std::make_shared<gl::Texture>(
+        device_->context_->GetExecutor(), width, height, 1, gl::Texture::Parameters{gl::TextureFormat::eDepthStencil});
+
+    gl::Framebuffer::Description fb_description;
+    fb_description.color_attachments[0] = color_target_;
+    fb_description.depth_attachment = depth_target_;
+
+    color_pass_fb_.emplace(
+        gl::MultisampleFramebuffer{device_->context_->GetExecutor(), width, height, 8, fb_description});
+}
 
 auto RenderDeviceOpenGL40::MakeScreenQuad(gl::GLContext::Executor executor) -> gl::Mesh<PositionVertex> {
     const std::array<PositionVertex, 6> quad_verts = {
@@ -13,13 +141,17 @@ auto RenderDeviceOpenGL40::MakeScreenQuad(gl::GLContext::Executor executor) -> g
     return gl::Mesh<PositionVertex>{executor, quad_verts};
 }
 
-RenderDeviceOpenGL40::RenderDeviceOpenGL40(const gl::GLContext *context, const Description &description)
-    : context_{context},
-      static_shader_{context->GetExecutor(), description.vs_static_source, description.fs_static_source},
-      skinned_shader_{context->GetExecutor(), description.vs_skinned_source, description.fs_skinned_source},
-      post_shader_{context->GetExecutor(), description.vs_post_filter, description.fs_post_filter},
-      screen_quad_{MakeScreenQuad(context->GetExecutor())} {
-    RebuildFramebuffers(description.target_width, description.target_height);
+RenderDeviceOpenGL40::RenderDeviceOpenGL40(
+    const gl::GLContext *context, RendererType renderer_type, uint32_t target_width, uint32_t target_height)
+    : context_{context} {
+    switch (renderer_type) {
+    case RendererType::eBaseSceneRenderer:
+        scene_renderer_ = std::make_unique<BaseSceneRenderer>(this, target_width, target_height);
+        break;
+
+    default:
+        throw std::runtime_error{"invalid renderer type supplied"};
+    }
 }
 
 auto RenderDeviceOpenGL40::CreateSkinningBuffer() -> SkinningBufferHandle {
@@ -131,107 +263,18 @@ auto RenderDeviceOpenGL40::SubmitSkinnedDraw(SkinnedDrawDescription &&desc) -> v
 }
 
 auto RenderDeviceOpenGL40::RenderFrame(const ICamera &camera) -> void {
-    GL_IMPLEMENTATION_INTERNAL;
-
-    GL_CHECK(glDisable(GL_CULL_FACE));
-    GL_CHECK(glEnable(GL_DEPTH_TEST));
-
-    color_pass_fb_->Use([&]() {
-        color_pass_fb_->ClearColorDepth(glm::fvec4{0.207f, 0.36f, 0.64f, 1.0f});
-        GeometryPass(camera);
-    });
-
-    GL_CHECK(glDisable(GL_DEPTH_TEST));
-
-    post_shader_.Use([&](const gl::ShaderProgram::Context &context) {
-        color_target_->Bind(0);
-        context.SetSampler("u_texture", 0);
-        screen_quad_.Draw();
-    });
+    if (scene_renderer_) {
+        scene_renderer_->Execute(camera);
+    }
 
     static_draws_.Clear();
     skinned_draws_.Clear();
 }
 
-auto RenderDeviceOpenGL40::ResizeFrame(uint32_t width, uint32_t height) -> void { RebuildFramebuffers(width, height); }
-
-auto RenderDeviceOpenGL40::GeometryPass(const ICamera &camera) -> void {
-    GL_IMPLEMENTATION_INTERNAL;
-
-    static_shader_.Use([&](const gl::ShaderProgram::Context &context) {
-        context.SetUniform("u_view", camera.GetView());
-        context.SetUniform("u_projection", camera.GetProjection());
-        context.SetUniform("u_diffuse", 0);
-
-        for (uint32_t draw_id = 0; draw_id < static_draws_.GetFill(); ++draw_id) {
-            const auto &draw = static_draws_[draw_id];
-            const auto *mesh = mesh_pool_.Get(draw->mesh.index());
-
-            if (!mesh) {
-                throw std::runtime_error{"invalid mesh id supplied for draw"};
-            }
-
-            if (draw->diffuse_map.has_value()) {
-                const auto *texture = texture_pool_.Get(draw->diffuse_map->index());
-                if (texture) {
-                    context.SetSampler("u_diffuse", 0);
-                    texture->Bind(0);
-                }
-            }
-
-            context.SetUniform("u_world", draw->world_matrix);
-            mesh->Draw();
-
-            GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
-        }
-    });
-
-    skinned_shader_.Use([&](const gl::ShaderProgram::Context &context) {
-        context.SetUniform("u_view", camera.GetView());
-        context.SetUniform("u_projection", camera.GetProjection());
-        context.SetUniform("u_diffuse", 0);
-
-        for (uint32_t draw_id = 0; draw_id < skinned_draws_.GetFill(); ++draw_id) {
-            const auto &draw = skinned_draws_[draw_id];
-            const auto *mesh = anim_mesh_pool_.Get(draw->mesh.index());
-            auto *skin_buffer = skinning_pool_.Get(draw->skinning_buffer.index());
-
-            if (!mesh) {
-                throw std::runtime_error{"invalid mesh id supplied for draw"};
-            }
-
-            if (draw->diffuse_map.has_value()) {
-                const auto *texture = texture_pool_.Get(draw->diffuse_map->index());
-                if (texture) {
-                    context.SetSampler("u_diffuse", 0);
-                    texture->Bind(0);
-                }
-            }
-
-            skin_buffer->ExecuteUpload();
-
-            context.SetBufferBase("u_bones", *skin_buffer);
-            context.SetUniform("u_world", draw->world_matrix);
-            mesh->Draw();
-
-            GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
-        }
-    });
-}
-
-auto RenderDeviceOpenGL40::RebuildFramebuffers(uint32_t width, uint32_t height) -> void {
-    GL_IMPLEMENTATION_INTERNAL;
-
-    color_target_ = std::make_shared<gl::Texture>(
-        context_->GetExecutor(), width, height, 1, gl::Texture::Parameters{gl::TextureFormat::eRGBA8});
-    depth_target_ = std::make_shared<gl::Texture>(
-        context_->GetExecutor(), width, height, 1, gl::Texture::Parameters{gl::TextureFormat::eDepthStencil});
-
-    gl::Framebuffer::Description fb_description;
-    fb_description.color_attachments[0] = color_target_;
-    // fb_description.depth_attachment = depth_target_;
-
-    color_pass_fb_.emplace(gl::Framebuffer{context_->GetExecutor(), width, height, fb_description});
+auto RenderDeviceOpenGL40::ResizeFrame(uint32_t width, uint32_t height) -> void {
+    if (scene_renderer_) {
+        scene_renderer_->Resize(width, height);
+    }
 }
 
 } // namespace render::hal

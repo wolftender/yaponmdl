@@ -19,6 +19,11 @@ public:
 };
 
 class RenderDeviceOpenGL40 : public IDevice {
+public:
+    enum class RendererType {
+        eBaseSceneRenderer,
+    };
+
 private:
     struct PositionVertex {
         glm::fvec3 position;
@@ -36,24 +41,42 @@ private:
 
     static auto MakeScreenQuad(gl::GLContext::Executor executor) -> gl::Mesh<PositionVertex>;
 
+    class ISceneRenderer {
+    public:
+        virtual ~ISceneRenderer() noexcept = default;
+        virtual auto Execute(const ICamera &camera) -> void = 0;
+        virtual auto Resize(uint32_t width, uint32_t height) -> void = 0;
+    };
+
+    class BaseSceneRenderer final : public ISceneRenderer {
+    public:
+        BaseSceneRenderer(RenderDeviceOpenGL40 *device, uint32_t target_width, uint32_t target_height);
+        ~BaseSceneRenderer() noexcept = default;
+
+        auto Execute(const ICamera &camera) -> void override;
+        auto Resize(uint32_t width, uint32_t height) -> void override;
+
+    private:
+        auto GeometryPass(const ICamera &camera) -> void;
+        auto RebuildFramebuffers(uint32_t width, uint32_t height) -> void;
+
+        RenderDeviceOpenGL40 *device_ = nullptr;
+
+        gl::ShaderProgram static_shader_;
+        gl::ShaderProgram skinned_shader_;
+        gl::ShaderProgram post_shader_;
+        gl::Mesh<PositionVertex> screen_quad_;
+
+        std::shared_ptr<gl::Texture> color_target_;
+        std::shared_ptr<gl::Texture> depth_target_;
+        std::optional<gl::MultisampleFramebuffer> color_pass_fb_;
+    };
+
 public:
     static constexpr uint32_t kNumMaxSkinningBuffers = 256;
 
-    struct Description {
-        std::string_view fs_static_source;
-        std::string_view vs_static_source;
-
-        std::string_view fs_skinned_source;
-        std::string_view vs_skinned_source;
-
-        std::string_view fs_post_filter;
-        std::string_view vs_post_filter;
-
-        uint32_t target_width;
-        uint32_t target_height;
-    };
-
-    RenderDeviceOpenGL40(const gl::GLContext *context, const Description &description);
+    RenderDeviceOpenGL40(
+        const gl::GLContext *context, RendererType renderer_type, uint32_t target_width, uint32_t target_height);
     ~RenderDeviceOpenGL40() = default;
 
     RenderDeviceOpenGL40(const RenderDeviceOpenGL40 &) = delete;
@@ -80,20 +103,8 @@ public:
     auto ResizeFrame(uint32_t width, uint32_t height) -> void;
 
 private:
-    auto RebuildFramebuffers(uint32_t width, uint32_t height) -> void;
-    auto GeometryPass(const ICamera &camera) -> void;
-    auto PostprocessPass() -> void;
-
     const gl::GLContext *context_ = nullptr;
-
-    gl::ShaderProgram static_shader_;
-    gl::ShaderProgram skinned_shader_;
-    gl::ShaderProgram post_shader_;
-    gl::Mesh<PositionVertex> screen_quad_;
-
-    std::shared_ptr<gl::Texture> color_target_;
-    std::shared_ptr<gl::Texture> depth_target_;
-    std::optional<gl::Framebuffer> color_pass_fb_;
+    std::unique_ptr<ISceneRenderer> scene_renderer_;
 
     util::FixedSizeQueue<StaticDrawDescription, 512> static_draws_;
     util::FixedSizeQueue<SkinnedDrawDescription, 256> skinned_draws_;

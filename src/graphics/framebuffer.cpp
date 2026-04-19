@@ -131,14 +131,6 @@ MultisampleFramebuffer::MultisampleFramebuffer(
                 GL_CHECK(glTexImage2DMultisample(
                     GL_TEXTURE_2D_MULTISAMPLE, samples_, static_cast<GLint>(parameters.format), GetWidth(), GetHeight(),
                     GL_TRUE));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_WRAP_S, static_cast<GLint>(parameters.wrap_s)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_WRAP_T, static_cast<GLint>(parameters.wrap_t)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(parameters.mag_filter)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MIN_FILTER, static_cast<GLint>(parameters.min_filter)));
 
                 const auto attachment_id = GL_COLOR_ATTACHMENT0 + i;
                 GL_CHECK(glFramebufferTexture2D(
@@ -159,8 +151,8 @@ MultisampleFramebuffer::MultisampleFramebuffer(
             GL_CHECK(glTexImage2DMultisample(
                 GL_TEXTURE_2D_MULTISAMPLE, samples_, static_cast<GLint>(parameters.format), GetWidth(), GetHeight(),
                 GL_TRUE));
-            GL_CHECK(
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, *msaa_depth_texture_, 0));
+            GL_CHECK(glFramebufferTexture2D(
+                GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, *msaa_depth_texture_, 0));
         } else {
             msaa_depth_ = factories::MakeRenderbuffer(executor_);
 
