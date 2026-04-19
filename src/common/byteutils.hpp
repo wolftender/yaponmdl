@@ -25,5 +25,6 @@ concept IsPrimitiveType = std::same_as<T, u8> || std::same_as<T, u16> || std::sa
                           std::same_as<T, f32> || std::same_as<T, f64>;
 
 auto BufferCRC32(std::span<const u8> data) -> u32;
+auto F16ToF32(uint16_t f16) -> float;
 
 } // namespace util::bytes

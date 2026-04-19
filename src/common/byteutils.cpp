@@ -46,4 +46,25 @@ auto BufferCRC32(std::span<const u8> data) -> u32 {
     return (crc ^ 0xffffffff);
 }
 
+// s:e:f
+// 1:5:10 -> 1:8:23
+// ...............SEEEEEMMMMMMMMMM  - f16
+// SEEEEEEEEMMMMMMMMMMMMMMMMMMMMMM  - f32
+//
+auto F16ToF32(uint16_t f16) -> float {
+    float f32;
+    uint32_t s = f16 & 0x8000u; // sign
+    uint32_t e = f16 & 0x7c00u; // exponent
+    uint32_t f = f16 & 0x7fffu; // mantissa + exponent
+
+    f = (f << 13) + 0x38000000; // +bias
+    s = s << 16;
+
+    f = (e == 0) ? 0 : f; // denormals to zero
+    f = f | s;
+
+    *reinterpret_cast<uint32_t *>(&f32) = f;
+    return f32;
+}
+
 } // namespace util::bytes

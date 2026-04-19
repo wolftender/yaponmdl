@@ -130,6 +130,8 @@ enum GmoChunkType : uint32_t {
 };
 
 enum GmoFcurveFlags : uint32_t {
+    SCEGMO_FCURVE_FLOAT16 = 0x0080,
+
     SCEGMO_FCURVE_INTERP_MASK = 0x000f,
     SCEGMO_FCURVE_CONSTANT = 0x0000,
     SCEGMO_FCURVE_LINEAR = 0x0001,

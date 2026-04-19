@@ -1525,8 +1525,10 @@ private:
         const auto num_elements = kElementsPerInterpType[static_cast<uint32_t>(fcurve.interpolation)];
         const auto stride = num_elements * native_num_dims + 1;
 
+        const auto is_float16 = (SCEGMO_FCURVE_FLOAT16 & native_format) == SCEGMO_FCURVE_FLOAT16;
         const auto total_size = stride * native_num_keys;
-        const auto total_size_bytes = sizeof(float) * total_size;
+        const auto word_size = is_float16 ? sizeof(uint16_t) : sizeof(float);
+        const auto total_size_bytes = word_size * total_size;
 
         const auto buffer = reader.ReadBuffer(total_size_bytes);
         if (!buffer.has_value()) {
@@ -1536,7 +1538,17 @@ private:
 
         // TODO: endianness?
         fcurve.raw_data.resize(total_size);
-        std::memcpy(fcurve.raw_data.data(), buffer->data(), total_size_bytes);
+        if (is_float16) {
+            const uint16_t *ptr = reinterpret_cast<const uint16_t *>(buffer->data());
+            for (uint32_t i = 0; i < total_size; ++i) {
+                fcurve.raw_data[i] = util::bytes::F16ToF32(*ptr++);
+            }
+        } else {
+            const float *ptr = reinterpret_cast<const float *>(buffer->data());
+            for (uint32_t i = 0; i < total_size; ++i) {
+                fcurve.raw_data[i] = *ptr++;
+            }
+        }
 
         return fcurve;
     }
