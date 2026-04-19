@@ -299,6 +299,15 @@ private:
                 continue;
             }
 
+            const auto extension = dir_entry.path().extension();
+            const auto is_image =
+                (extension == ".tga" || extension == ".gxt" || extension == ".png" || extension == ".jpg" ||
+                 extension == ".jpeg" || extension == ".bmp");
+
+            if (!is_image) {
+                continue;
+            }
+
             auto filename = dir_entry.path().stem().string();
             dir_tree_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
         }
