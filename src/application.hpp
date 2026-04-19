@@ -55,6 +55,7 @@ private:
     TextureViewer *texture_viewer_ = nullptr;
 
     wxLogWindow *log_window_ = nullptr;
+    wxString working_dir_;
     DirectoryViewControl *dir_control_ = nullptr;
     HexViewer *hex_viewer_ = nullptr;
 };

@@ -48,7 +48,8 @@ auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) ->
 }
 
 ModelViewer::OrthoCameraController::OrthoCameraController() {
-    camera_.SetNear(-1.0f);
+    camera_.SetNear(-10.0f);
+    camera_.SetFar(10.0f);
     camera_.SetFar(100.0f);
 }
 

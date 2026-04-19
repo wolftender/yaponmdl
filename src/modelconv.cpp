@@ -52,6 +52,44 @@ auto FetchBitmap(const ITextureRepository *repository, std::string_view name) ->
     return bm.value();
 }
 
+auto ConvertIndicesGMO(std::span<const uint32_t> input, gmo::GmoDrawPrimitive primitive) -> std::vector<uint32_t> {
+    std::vector<uint32_t> indices;
+    switch (primitive) {
+    case gmo::GmoDrawPrimitive::eTriangles:
+        indices.assign(input.begin(), input.end());
+        break;
+
+    case gmo::GmoDrawPrimitive::eTriangleFan:
+        for (uint32_t i = 1; i < input.size() - 1; ++i) {
+            indices.emplace_back(input[0]);
+            indices.emplace_back(input[i + 0]);
+            indices.emplace_back(input[i + 1]);
+        }
+
+        break;
+
+    case gmo::GmoDrawPrimitive::eTriangleStrip:
+        for (uint32_t c = 0; c < input.size() - 2; ++c) {
+            if (c % 2 == 0) {
+                indices.emplace_back(input[c + 0]);
+                indices.emplace_back(input[c + 1]);
+                indices.emplace_back(input[c + 2]);
+            } else {
+                indices.emplace_back(input[c + 0]);
+                indices.emplace_back(input[c + 2]);
+                indices.emplace_back(input[c + 1]);
+            }
+        }
+
+        break;
+
+    default:
+        throw std::runtime_error{"unsupported primitive type"};
+    }
+
+    return indices;
+}
+
 auto ConvertGMO(
     const gmo::GmoModel &gmo_model, render::hal::IDevice *device, const ITextureRepository *repository,
     const IConvertLogger *logger) -> std::unique_ptr<render::Model> {
@@ -105,6 +143,7 @@ auto ConvertGMO(
 
         for (const auto &gmo_layer : gmo_material.layers) {
             switch (gmo_layer.map_type) {
+            case gmo::GmoMaterialLayerMapType::eNone:
             case gmo::GmoMaterialLayerMapType::eDiffuse:
                 logger->Log(
                     fmt::format(
@@ -211,6 +250,7 @@ auto ConvertGMO(
             vertex.position = gmo_vert.position;
             vertex.normal = gmo_vert.normal;
             vertex.color = gmo_vert.color;
+            vertex.uv = gmo_vert.uv;
 
             return vertex;
         });
@@ -220,7 +260,8 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id = model->AddMesh(vertices, gmo_draw_array.indices, material_id.value());
+        const auto mesh_id = model->AddMesh(
+            vertices, ConvertIndicesGMO(gmo_draw_array.indices, gmo_draw_array.primitive), material_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }
@@ -245,6 +286,7 @@ auto ConvertGMO(
             vertex.position = gmo_vert.position;
             vertex.normal = gmo_vert.normal;
             vertex.color = gmo_vert.color;
+            vertex.uv = gmo_vert.uv;
 
             for (uint32_t i = 0; i < 4 && i < skin->GetNodes().size(); ++i) {
                 vertex.weights[i] = gmo_vert.weights[i];
@@ -259,8 +301,9 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id =
-            model->AddAnimatedMesh(vertices, gmo_draw_array.indices, material_id.value(), skin_id.value());
+        const auto mesh_id = model->AddAnimatedMesh(
+            vertices, ConvertIndicesGMO(gmo_draw_array.indices, gmo_draw_array.primitive), material_id.value(),
+            skin_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }

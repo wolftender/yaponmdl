@@ -1,4 +1,8 @@
+#include <fstream>
+#include <filesystem>
+
 #include <wx/file.h>
+#include <wx/filename.h>
 
 #include "application.hpp"
 #include "hexview.hpp"
@@ -7,6 +11,8 @@
 #include "formats/gxt.hpp"
 #include "formats/gmo.hpp"
 #include "formats/act.hpp"
+
+namespace fs = std::filesystem;
 
 enum MenuCommand {
     eMenuCommandFileOpenFile = 10000,
@@ -100,8 +106,9 @@ ModelBrowserFrame::ModelBrowserFrame()
     notebook_left_ = new wxNotebook(splitter_, wxID_ANY);
     notebook_right_ = new wxNotebook(splitter_, wxID_ANY);
 
+    working_dir_ = wxGetCwd();
     dir_control_ = new DirectoryViewControl(
-        notebook_left_, wxID_ANY, wxGetCwd(), wxGetCwd(), wxDefaultPosition, wxDefaultSize,
+        notebook_left_, wxID_ANY, working_dir_, working_dir_, wxDefaultPosition, wxDefaultSize,
         wxDIRCTRL_SELECT_FIRST | wxDIRCTRL_3D_INTERNAL);
     dir_control_->SetDefaultPath(wxGetCwd());
     dir_control_->SetPath(wxGetCwd());
@@ -187,12 +194,127 @@ public:
     }
 };
 
+class ConvWxLogger : public conv::IConvertLogger {
+public:
+    auto Log(std::string_view message) const -> void override {
+        wxLogMessage("libconv message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
+class GmoTextureRepository final : public conv::ITextureRepository {
+public:
+    GmoTextureRepository(const std::string &path) {
+        if (!fs::exists(path)) {
+            return;
+        }
+
+        const auto is_file = fs::is_regular_file(path);
+        const auto is_dir = fs::is_directory(path);
+
+        if (is_file) {
+            const auto file_dir = fs::path{path}.parent_path();
+            MapDirectory(file_dir);
+        } else if (is_dir) {
+            MapDirectory(fs::path{path});
+        }
+    }
+
+    auto FetchTexture(std::string_view name) const -> std::optional<Bitmap> override {
+        const auto ext_position = name.find_last_of('.');
+        const auto iter = [&]() {
+            if (ext_position != std::string::npos) {
+                return dir_tree_.find(std::string{name.substr(0, ext_position)});
+            } else {
+                return dir_tree_.find(std::string{name});
+            }
+        }();
+
+        if (iter == dir_tree_.end()) {
+            return std::nullopt;
+        }
+
+        // load bitmap
+        std::fstream fs{iter->second, std::ios::in | std::ios::binary};
+
+        if (!fs.good()) {
+            wxLogError(wxString::Format("texture repo: failed to load file %s", iter->second));
+            return std::nullopt;
+        }
+
+        fs.seekg(0, std::ios::end);
+        const auto file_size = fs.tellg();
+        fs.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> buffer;
+        buffer.resize(16);
+
+        fs.read(reinterpret_cast<char *>(buffer.data()), 16);
+        if (!gxt::CheckHeader(buffer)) {
+            wxLogError(wxString::Format("texture repo: invalid texture %s", iter->second));
+            return std::nullopt;
+        }
+
+        buffer.resize(file_size);
+        fs.seekg(0, std::ios::beg);
+        fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
+
+        std::vector<gxt::GxtImageBitmap> bitmaps;
+        try {
+            bitmaps = gxt::LoadBitmaps(buffer);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", iter->second, e.what()));
+            return std::nullopt;
+        }
+
+        if (bitmaps.size() == 0) {
+            wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", iter->second));
+            return std::nullopt;
+        }
+
+        wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, iter->second));
+
+        auto &bm = bitmaps.front();
+        return Bitmap{
+            .width = bm.width,
+            .height = bm.height,
+            .plane = std::move(bm.rgba_plane),
+        };
+    }
+
+private:
+    auto MapDirectory(const fs::path &path) -> void {
+        constexpr uint32_t kLimitFiles = 1 << 14;
+        wxLogMessage(wxString::Format("texture repo: mapping directory: %s", path.c_str()));
+
+        uint32_t num_processed = 0;
+        for (const fs::directory_entry &dir_entry : fs::recursive_directory_iterator{path}) {
+            if (num_processed > kLimitFiles) {
+                wxLogMessage(
+                    wxString::Format("texture repo: the directory is too big to index, exceeded %d", kLimitFiles));
+                return;
+            }
+
+            num_processed++;
+            if (!dir_entry.is_regular_file()) {
+                continue;
+            }
+
+            auto filename = dir_entry.path().stem().string();
+            dir_tree_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
+        }
+    }
+
+    std::unordered_map<std::string, std::string> dir_tree_;
+};
+
 class GmoLoader final : public ModelViewer::ILoader {
 public:
-    GmoLoader(std::span<const uint8_t> gmo_buffer) : gmo_buffer_{gmo_buffer} {}
+    GmoLoader(std::span<const uint8_t> gmo_buffer, const std::string &directory)
+        : gmo_buffer_{gmo_buffer}, directory_{directory} {}
 
     virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
         std::vector<gmo::GmoModel> gmo_model;
+        GmoTextureRepository repository{directory_};
 
         try {
             GmoWxLogger logger;
@@ -206,7 +328,8 @@ public:
 
         std::unique_ptr<render::Model> model;
         try {
-            model = conv::ConvertGMO(gmo_model.front(), &device);
+            ConvWxLogger logger;
+            model = conv::ConvertGMO(gmo_model.front(), &device, &repository, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
             return nullptr;
@@ -217,6 +340,7 @@ public:
 
 private:
     std::span<const uint8_t> gmo_buffer_;
+    std::string directory_;
 };
 
 class ActLoader final : public ModelViewer::ILoader {
@@ -227,9 +351,9 @@ public:
         std::vector<gmo::GmoModel> gmo_model;
 
         try {
-            GmoWxLogger logger;
+            ConvWxLogger logger;
             const auto act_model = act::LoadFromBinary(act_buffer_);
-            return conv::ConvertACT(act_model, &device);
+            return conv::ConvertACT(act_model, &device, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libact fatal error: %s", e.what()));
             return nullptr;
@@ -280,7 +404,8 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GmoLoader>(current_file_), ModelViewer::MakeOrthoCamera(), notebook_right_);
+            std::make_unique<GmoLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
+            notebook_right_);
         notebook_right_->AddPage(model_viewer_, "Model view", true);
     } else if (act::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(
