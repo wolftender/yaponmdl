@@ -47,9 +47,8 @@ auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) ->
     camera_.SetDistance(zoom_);
 }
 
-ModelViewer::OrthoCameraController::OrthoCameraController() {
-    camera_.SetNear(-10.0f);
-    camera_.SetFar(10.0f);
+ModelViewer::OrthoCameraController::OrthoCameraController() : center_{0.0f, 0.0f} {
+    camera_.SetNear(-100.0f);
     camera_.SetFar(100.0f);
 }
 
@@ -58,7 +57,26 @@ auto ModelViewer::OrthoCameraController::OnUpdateSize(float width, float height)
     camera_.SetSize(size_ * zoom_);
 }
 
-auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {}
+auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {
+    glm::ivec2 current_mouse_position;
+    event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
+
+    if (event.Dragging() && event.LeftIsDown()) {
+        if (!prev_mouse_pos_.has_value()) {
+            prev_mouse_pos_ = current_mouse_position;
+            return;
+        }
+
+        const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
+        prev_mouse_pos_ = current_mouse_position;
+        center_ =
+            center_ + glm::fvec2{-static_cast<float>(delta_position.x), static_cast<float>(delta_position.y)} * zoom_;
+
+        camera_.SetCenter(glm::fvec3{center_, 0.0f});
+    } else {
+        prev_mouse_pos_ = std::nullopt;
+    }
+}
 
 auto ModelViewer::OrthoCameraController::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
     auto delta = event.GetWheelRotation() / event.GetWheelDelta();

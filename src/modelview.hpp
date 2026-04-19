@@ -57,6 +57,8 @@ public:
     private:
         float zoom_ = 1.0f;
         glm::fvec2 size_;
+        glm::fvec2 center_;
+        std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
         render::OrthoCamera camera_;
     };
 
