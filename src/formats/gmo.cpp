@@ -75,6 +75,20 @@ auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_vie
     return value.value();
 }
 
+template <typename T>
+auto AssertReadAligned(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
+    const auto value = reader.ReadAligned<T>();
+    if (!value.has_value()) {
+        if (message.has_value()) {
+            throw GmoParseError{std::string{message.value()}};
+        } else {
+            throw GmoParseError{fmt::format("invalid byte read at position {}", reader.Position())};
+        }
+    }
+
+    return value.value();
+}
+
 auto AssertSeek(util::bytes::BinaryReader &reader, uint64_t position) -> void {
     const auto res = reader.Seek(position);
     if (util::bytes::BinaryReader::Result::eSuccess != res) {
@@ -310,17 +324,17 @@ constexpr auto ToString(SceGuFmtIndex v) -> const char * {
 }
 
 inline auto ColorPF5650ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b1111100000000000} & color;
-    const auto g = uint16_t{0b0000011111100000} & color;
+    const auto r = (uint16_t{0b1111100000000000} & color) >> 11;
+    const auto g = (uint16_t{0b0000011111100000} & color) >> 5;
     const auto b = uint16_t{0b0000000000011111} & color;
 
     return {static_cast<float>(r) / 31.0f, static_cast<float>(g) / 63.0f, static_cast<float>(b) / 31.0f, 1.0f};
 }
 
 inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b1111100000000000} & color;
-    const auto g = uint16_t{0b0000011111000000} & color;
-    const auto b = uint16_t{0b0000000000111110} & color;
+    const auto r = (uint16_t{0b1111100000000000} & color) >> 11;
+    const auto g = (uint16_t{0b0000011111000000} & color) >> 6;
+    const auto b = (uint16_t{0b0000000000111110} & color) >> 1;
     const auto a = uint16_t{0b0000000000000001} & color;
 
     return {
@@ -329,9 +343,9 @@ inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0xf000} & color;
-    const auto g = uint16_t{0x0f00} & color;
-    const auto b = uint16_t{0x00f0} & color;
+    const auto r = (uint16_t{0xf000} & color) >> 12;
+    const auto g = (uint16_t{0x0f00} & color) >> 8;
+    const auto b = (uint16_t{0x00f0} & color) >> 4;
     const auto a = uint16_t{0x000f} & color;
 
     return {
@@ -340,9 +354,9 @@ inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF8888ToRGBA8(uint32_t color) -> glm::fvec4 {
-    const auto r = 0xff000000 & color;
-    const auto g = 0x00ff0000 & color;
-    const auto b = 0x0000ff00 & color;
+    const auto r = (0xff000000 & color) >> 24;
+    const auto g = (0x00ff0000 & color) >> 16;
+    const auto b = (0x0000ff00 & color) >> 8;
     const auto a = 0x000000ff & color;
 
     return {
@@ -427,6 +441,25 @@ template <typename T, uint32_t D> auto AssertReadFVecN(util::bytes::BinaryReader
     glm::vec<D, float> val;
     for (uint32_t i = 0; i < D; ++i) {
         val[i] = static_cast<float>(AssertRead<T>(reader)) / kRange;
+    }
+
+    return val;
+};
+
+template <uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<float>(reader));
+    }
+
+    return val;
+};
+
+template <typename T, uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    constexpr float kRange = static_cast<float>(std::numeric_limits<T>::max());
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<T>(reader)) / kRange;
     }
 
     return val;
@@ -609,11 +642,6 @@ private:
                 AssertSeek(reader, args_offset);
                 const auto num_bones = AssertRead<uint32_t>(reader);
 
-                if (num_bones > 8) {
-                    throw GmoParseError{fmt::format(
-                        "cannot have more than 8 blend bones, requested: {}, in chunk {}", num_bones, bone_chunk.name)};
-                }
-
                 bone.blend_bones.reserve(num_bones);
                 for (uint32_t i = 0; i < num_bones; ++i) {
                     bone.blend_bones.emplace_back(RefIndex(AssertRead<uint32_t>(reader)));
@@ -625,11 +653,6 @@ private:
             case SCEGMO_BLEND_OFFSETS: {
                 AssertSeek(reader, args_offset);
                 const auto num_offsets = AssertRead<uint32_t>(reader);
-
-                if (num_offsets > 8) {
-                    throw GmoParseError{
-                        fmt::format("cannot have more than 8 blend offsets, requested: {}", num_offsets)};
-                }
 
                 bone.blend_offsets.resize(num_offsets);
                 for (uint32_t i = 0; i < num_offsets; ++i) {
@@ -767,6 +790,7 @@ private:
     }
 
     auto LoadVertexArray(const GmoChunk &array_chunk) const -> GmoVertexArray {
+        constexpr std::array<uint32_t, 8> kAligns = {0, 0, 1, 3, 1, 1, 1, 3};
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(array_chunk) != SCEGMO_ARRAYS) {
@@ -841,17 +865,22 @@ private:
             ToString(static_cast<SceGuFmtWeight>(fmt_weight)), ToString(static_cast<SceGuFmtIndex>(fmt_index)),
             num_weights, num_morphs);
 
+        if (num_weights > 8) {
+            throw std::runtime_error{
+                fmt::format("gmo vertex does not support more than 8 weights, requested {}", num_weights)};
+        }
+
         using Reader = util::bytes::BinaryReader;
         const auto fnReadUv = [&]() -> glm::fvec2 (*)(Reader &) {
             switch (fmt_texture) {
             case eSceGuFmtTextureNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec2{0.0f, 0.0f}; };
             case eSceGuFmtTextureUBYTE:
-                return [](Reader &r) { return AssertReadFVecN<uint8_t, 2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint8_t, 2>(r); };
             case eSceGuFmtTextureUSHORT:
-                return [](Reader &r) { return AssertReadFVecN<uint16_t, 2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint16_t, 2>(r); };
             case eSceGuFmtTextureFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<2>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported texture uv format {} in chunk {}", fmt_texture, array_chunk.name)};
@@ -864,22 +893,22 @@ private:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f}; };
             case eSceGuFmtColorPF5650:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF5650ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF5551:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF5551ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF4444:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF4444ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF8888:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint32_t>(r);
                     return ColorPF8888ToRGBA8(rgba);
                 };
             default:
@@ -893,11 +922,11 @@ private:
             case eSceGuFmtNormalNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
             case eSceGuFmtNormalBYTE:
-                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
             case eSceGuFmtNormalSHORT:
-                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
             case eSceGuFmtNormalFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex normal format {} in chunk {}", fmt_normal, array_chunk.name)};
@@ -909,11 +938,11 @@ private:
             case eSceGuFmtVertexNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
             case eSceGuFmtVertexBYTE:
-                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
             case eSceGuFmtVertexSHORT:
-                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
             case eSceGuFmtVertexFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex position format {} in chunk {}", fmt_vertex, array_chunk.name)};
@@ -925,17 +954,23 @@ private:
             case eSceGuFmtWeightNONE:
                 return []([[maybe_unused]] Reader &r) { return 0.0f; };
             case eSceGuFmtWeightUBYTE:
-                return []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint8_t>(r)) / 255.0f; };
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint8_t>(r)) / 255.0f;
+                };
             case eSceGuFmtWeightUSHORT:
-                return
-                    []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint16_t>(r)) / 65535.0f; };
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint16_t>(r)) / 65535.0f;
+                };
             case eSceGuFmtWeightFLOAT:
-                return []([[maybe_unused]] Reader &r) { return AssertRead<float>(r); };
+                return []([[maybe_unused]] Reader &r) { return AssertReadAligned<float>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex weight format {} in chunk {}", fmt_weight, array_chunk.name)};
             }
         }();
+
+        const uint32_t align =
+            kAligns[fmt_texture] | kAligns[fmt_color] | kAligns[fmt_normal] | kAligns[fmt_vertex] | kAligns[fmt_weight];
 
         array.vertices.reserve(native_num_verts);
         for (uint32_t i = 0; i < native_num_verts; ++i) {
@@ -951,6 +986,12 @@ private:
             vertex.position = fnReadPosition(reader);
 
             array.vertices.emplace_back(vertex);
+
+            const auto position = reader.Position();
+            const auto aligned_position = (position + align) & ~align;
+            if (aligned_position > position) {
+                (void)reader.ReadBuffer(aligned_position - position);
+            }
         }
 
         return array;
