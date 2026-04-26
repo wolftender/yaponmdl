@@ -324,18 +324,18 @@ constexpr auto ToString(SceGuFmtIndex v) -> const char * {
 }
 
 inline auto ColorPF5650ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = (uint16_t{0b1111100000000000} & color) >> 11;
+    const auto r = uint16_t{0b0000000000011111} & color;
     const auto g = (uint16_t{0b0000011111100000} & color) >> 5;
-    const auto b = uint16_t{0b0000000000011111} & color;
+    const auto b = (uint16_t{0b1111100000000000} & color) >> 11;
 
     return {static_cast<float>(r) / 31.0f, static_cast<float>(g) / 63.0f, static_cast<float>(b) / 31.0f, 1.0f};
 }
 
 inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = (uint16_t{0b1111100000000000} & color) >> 11;
-    const auto g = (uint16_t{0b0000011111000000} & color) >> 6;
-    const auto b = (uint16_t{0b0000000000111110} & color) >> 1;
-    const auto a = uint16_t{0b0000000000000001} & color;
+    const auto r = uint16_t{0b0000000000011111} & color;
+    const auto g = (uint16_t{0b0000001111100000} & color) >> 5;
+    const auto b = (uint16_t{0b0111110000000000} & color) >> 10;
+    const auto a = (uint16_t{0b1000000000000000} & color) >> 15;
 
     return {
         static_cast<float>(r) / 31.0f, static_cast<float>(g) / 31.0f, static_cast<float>(b) / 31.0f,
@@ -343,10 +343,10 @@ inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = (uint16_t{0xf000} & color) >> 12;
-    const auto g = (uint16_t{0x0f00} & color) >> 8;
-    const auto b = (uint16_t{0x00f0} & color) >> 4;
-    const auto a = uint16_t{0x000f} & color;
+    const auto r = uint16_t{0x000f} & color;
+    const auto g = (uint16_t{0x00f0} & color) >> 4;
+    const auto b = (uint16_t{0x0f00} & color) >> 8;
+    const auto a = (uint16_t{0xf000} & color) >> 12;
 
     return {
         static_cast<float>(r) / 15.0f, static_cast<float>(g) / 15.0f, static_cast<float>(b) / 15.0f,
@@ -354,10 +354,10 @@ inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF8888ToRGBA8(uint32_t color) -> glm::fvec4 {
-    const auto r = (0xff000000 & color) >> 24;
-    const auto g = (0x00ff0000 & color) >> 16;
-    const auto b = (0x0000ff00 & color) >> 8;
-    const auto a = 0x000000ff & color;
+    const auto r = 0x000000ff & color;
+    const auto g = (0x0000ff00 & color) >> 8;
+    const auto b = (0x00ff0000 & color) >> 16;
+    const auto a = (0xff000000 & color) >> 24;
 
     return {
         static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f,
