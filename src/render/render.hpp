@@ -32,11 +32,11 @@ struct ModelVertex {
     glm::fvec3 color;
     glm::fvec3 normal;
     glm::fvec4 tangent;
-    glm::fvec4 weights;
-    glm::uvec4 bones;
+    float weights[8];
+    uint32_t bones[8];
 
     static auto GetLayout() -> std::span<const gl::LayoutElement> {
-        static constexpr std::array<gl::LayoutElement, 7> kLayout{
+        static constexpr std::array<gl::LayoutElement, 9> kLayout{
             gl::LayoutElement{0, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, position)},
             gl::LayoutElement{1, 2, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, uv)},
             gl::LayoutElement{2, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, color)},
@@ -44,7 +44,11 @@ struct ModelVertex {
             gl::LayoutElement{4, 3, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, tangent)},
             gl::LayoutElement{5, 4, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, weights)},
             gl::LayoutElement{
-                6, 4, gl::ShaderAttribType::eUnsignedInt, sizeof(ModelVertex), offsetof(ModelVertex, bones)},
+                6, 4, gl::ShaderAttribType::eFloat, sizeof(ModelVertex), offsetof(ModelVertex, weights[4])},
+            gl::LayoutElement{
+                7, 4, gl::ShaderAttribType::eUnsignedInt, sizeof(ModelVertex), offsetof(ModelVertex, bones)},
+            gl::LayoutElement{
+                8, 4, gl::ShaderAttribType::eUnsignedInt, sizeof(ModelVertex), offsetof(ModelVertex, bones[4])},
         };
 
         return kLayout;

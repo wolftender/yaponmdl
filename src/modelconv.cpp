@@ -201,7 +201,11 @@ auto ConvertGMO(
         throw std::runtime_error{"invalid model topology"};
     }
 
-    const auto fnCreateSkin = [&](const gmo::GmoBone &gmo_bone) -> std::optional<render::Model::SkinId> {
+    // create bind pose to calculate bone offsets
+    auto bind_pose = model->CreatePose();
+
+    const auto fnCreateSkin = [&]([[maybe_unused]] const render::Model::Node &bone,
+                                  const gmo::GmoBone &gmo_bone) -> std::optional<render::Model::SkinId> {
         if (gmo_bone.blend_bones.empty()) {
             return std::nullopt;
         }
@@ -212,26 +216,8 @@ auto ConvertGMO(
                 throw std::runtime_error{"invalid relation between blend bones"};
             }
 
-            skin.AddNodeRef(node_map[gmo_bone.blend_bones[i]].value(), gmo_bone.blend_offsets[i]);
-        }
-
-        return model->AddSkin(std::move(skin));
-    };
-
-    const auto fnCreateSkinFromSubset =
-        [&](const gmo::GmoBone &gmo_bone, const std::vector<uint32_t> &subset) -> std::optional<render::Model::SkinId> {
-        if (gmo_bone.blend_bones.empty()) {
-            return std::nullopt;
-        }
-
-        render::Model::Skin skin;
-        for (uint32_t i = 0; i < subset.size(); ++i) {
-            const auto idx = gmo_bone.blend_bones[subset[i]];
-            if (!node_map[gmo_bone.blend_bones[idx]].has_value()) {
-                throw std::runtime_error{"invalid relation between blend bones"};
-            }
-
-            skin.AddNodeRef(node_map[gmo_bone.blend_bones[idx]].value(), gmo_bone.blend_offsets[idx]);
+            const auto ref_bone_id = node_map[gmo_bone.blend_bones[i]].value();
+            skin.AddNodeRef(ref_bone_id, gmo_bone.blend_offsets[i]);
         }
 
         return model->AddSkin(std::move(skin));
@@ -272,8 +258,7 @@ auto ConvertGMO(
     const auto fnParseGmoSkinmesh = [&](render::Model::Node &node, const gmo::GmoBone &gmo_bone,
                                         const gmo::GmoMesh &gmo_mesh, const gmo::GmoDrawArray &gmo_draw_array,
                                         const gmo::GmoVertexArray &gmo_vertex_array) {
-        const auto skin_id = gmo_mesh.blend_subset.empty() ? fnCreateSkin(gmo_bone)
-                                                           : fnCreateSkinFromSubset(gmo_bone, gmo_mesh.blend_subset);
+        const auto skin_id = fnCreateSkin(node, gmo_bone);
         const auto *skin = model->GetSkin(skin_id.value());
 
         std::vector<render::AnimatedVertex> vertices;
@@ -288,9 +273,20 @@ auto ConvertGMO(
             vertex.color = gmo_vert.color;
             vertex.uv = gmo_vert.uv;
 
-            for (uint32_t i = 0; i < 4 && i < skin->GetNodes().size(); ++i) {
-                vertex.weights[i] = gmo_vert.weights[i];
-                vertex.bones[i] = i;
+            std::fill(vertex.weights, vertex.weights + 8, 0.0f);
+            std::fill(vertex.bones, vertex.bones + 8, 0);
+
+            // if no blend subset, pick first n bones, otherwise use blend subset
+            if (gmo_mesh.blend_subset.empty()) {
+                for (uint32_t i = 0; i < 8 && i < skin->GetNodes().size(); ++i) {
+                    vertex.weights[i] = gmo_vert.weights[i];
+                    vertex.bones[i] = i;
+                }
+            } else {
+                for (uint32_t i = 0; i < gmo_mesh.blend_subset.size(); ++i) {
+                    vertex.weights[i] = gmo_vert.weights[i];
+                    vertex.bones[i] = gmo_mesh.blend_subset[i];
+                }
             }
 
             return vertex;
@@ -335,6 +331,31 @@ auto ConvertGMO(
                         fnParseGmoMesh(node, gmo_mesh, gmo_draw_array, gmo_vertex_array);
                     }
                 }
+            }
+        }
+    }
+
+    // animation conversions
+    for (uint32_t gmo_motion_id = 0; gmo_motion_id < gmo_model.motions.size(); ++gmo_motion_id) {
+        const auto &gmo_motion = gmo_model.motions[gmo_motion_id];
+        for (const auto &gmo_animation : gmo_motion.animations) {
+            if (gmo_animation.target != gmo::GmoAnimationTarget::eBone) {
+                throw std::runtime_error{"libconv: material animations are not supported"};
+            }
+
+            switch (gmo_animation.property) {
+            case gmo::eAnimBoneTranslate:
+                break;
+            case gmo::eAnimBoneScale2:
+                break;
+            case gmo::eAnimBoneRotateQ:
+                break;
+            case gmo::eAnimPataponTextureEXT:
+                break;
+            case gmo::eAnimPataponUnknownEXT:
+                break;
+            default:
+                throw std::runtime_error{"libconv: unsupported target type"};
             }
         }
     }
@@ -505,10 +526,11 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                     [&](const act::Model::StaticSubmesh &act_submesh) {
                 std::vector<render::StaticVertex> vertices{act_submesh.vertices.size()};
                 for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
-                    vertices[i].position = glm::fvec4{act_submesh.vertices[i].position, 0.0f};
-                    vertices[i].normal = glm::fvec4{act_submesh.vertices[i].normal, 0.0f};
+                    vertices[i].position = act_submesh.vertices[i].position;
+                    vertices[i].normal = act_submesh.vertices[i].normal;
                     vertices[i].tangent = act_submesh.vertices[i].tangent;
-                    vertices[i].uv = glm::fvec4{act_submesh.vertices[i].texcoord, 0.0f, 0.0f};
+                    vertices[i].uv = act_submesh.vertices[i].texcoord;
+                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
                 }
 
                 auto material_id = material_map[act_submesh.material];
@@ -532,12 +554,16 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
 
                 std::vector<render::AnimatedVertex> vertices{act_submesh.vertices.size()};
                 for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
-                    vertices[i].position = glm::fvec4{act_submesh.vertices[i].position, 0.0f};
-                    vertices[i].normal = glm::fvec4{act_submesh.vertices[i].normal, 0.0f};
+                    vertices[i].position = act_submesh.vertices[i].position;
+                    vertices[i].normal = act_submesh.vertices[i].normal;
                     vertices[i].tangent = act_submesh.vertices[i].tangent;
-                    vertices[i].uv = glm::fvec4{act_submesh.vertices[i].texcoord, 0.0f, 0.0f};
-                    vertices[i].bones = act_submesh.vertices[i].joints;
-                    vertices[i].weights = act_submesh.vertices[i].weights;
+                    vertices[i].uv = act_submesh.vertices[i].texcoord;
+                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
+
+                    for (uint32_t w = 0; w < 4; ++w) {
+                        vertices[i].bones[w] = act_submesh.vertices[i].joints[w];
+                        vertices[i].weights[w] = act_submesh.vertices[i].weights[w];
+                    }
                 }
 
                 auto material_id = material_map[act_submesh.material];

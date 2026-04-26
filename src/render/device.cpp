@@ -104,7 +104,7 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
             skin_buffer->ExecuteUpload();
 
             context.SetBufferBase("u_bones", *skin_buffer);
-            context.SetUniform("u_world", draw->world_matrix);
+            context.SetUniform("u_world", glm::fmat4x4{1.0f});
             mesh->Draw();
 
             GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
