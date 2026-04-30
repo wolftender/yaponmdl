@@ -616,14 +616,14 @@ public:
 
             if (time_ > channel_data.next_keyframe_time) {
                 const auto num_keyframes = keyframes.size();
-                do {
+                while ((channel_data.next_keyframe < num_keyframes - 1) &&
+                       (keyframes[channel_data.next_keyframe].time < time_)) {
                     channel_data.prev_keyframe++;
                     channel_data.next_keyframe++;
 
                     channel_data.prev_keyframe_time = keyframes[channel_data.prev_keyframe].time;
                     channel_data.next_keyframe_time = keyframes[channel_data.next_keyframe].time;
-                } while ((channel_data.next_keyframe < num_keyframes - 1) &&
-                         (keyframes[channel_data.next_keyframe].time < time_));
+                }
             }
 
             const auto &prev_keyframe = keyframes[channel_data.prev_keyframe];

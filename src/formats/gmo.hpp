@@ -340,6 +340,17 @@ struct GmoFCurve {
     std::vector<float> raw_data;
 };
 
+constexpr auto NumElementsPerInterpType(GmoFCurveInterpolation interpolation) -> uint32_t {
+    constexpr std::array<uint32_t, 5> kElementsPerInterpType = {1, 1, 3, 5, 1};
+    const auto index = static_cast<uint32_t>(interpolation);
+
+    if (index < kElementsPerInterpType.size()) {
+        return kElementsPerInterpType[index];
+    }
+
+    return 0;
+}
+
 struct GmoMotion {
     std::string name;
 

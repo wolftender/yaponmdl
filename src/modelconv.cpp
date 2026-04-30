@@ -90,6 +90,54 @@ auto ConvertIndicesGMO(std::span<const uint32_t> input, gmo::GmoDrawPrimitive pr
     return indices;
 }
 
+auto ConvertGMOInterpolation(gmo::GmoFCurveInterpolation interpolation) -> render::Model::Animation::InterpolationMode {
+    switch (interpolation) {
+    case gmo::GmoFCurveInterpolation::eConstant:
+        return render::Model::Animation::InterpolationMode::eStep;
+    case gmo::GmoFCurveInterpolation::eSpherical:
+        return render::Model::Animation::InterpolationMode::eLinear;
+    case gmo::GmoFCurveInterpolation::eLinear:
+        return render::Model::Animation::InterpolationMode::eLinear;
+    case gmo::GmoFCurveInterpolation::eHermite:
+    case gmo::GmoFCurveInterpolation::eCubic:
+        return render::Model::Animation::InterpolationMode::eStep;
+    }
+}
+
+template <render::Model::Animation::TargetProperty Prop>
+auto ConvertGMOKeyframes(
+    render::Model::Animation::Channel<Prop> &channel, const gmo::GmoMotion &gmo_motion,
+    const gmo::GmoAnimation &gmo_animation) -> void {
+    using DataType = render::Model::Animation::Channel<Prop>::PropertyType;
+    using KeyframeType = render::Model::Animation::Channel<Prop>::KeyframeType;
+
+    constexpr uint32_t kNumDimensions = DataType::length();
+    // constexpr std::array<uint32_t, 5> kElementsPerInterpType = {1, 1, 3, 5, 1};
+
+    const auto &gmo_fcurve = gmo_motion.fcurves[gmo_animation.fcurve_id];
+    const auto num_dims_per_keyframe = gmo::NumElementsPerInterpType(gmo_fcurve.interpolation) * kNumDimensions + 1;
+
+    if (num_dims_per_keyframe * gmo_fcurve.num_keyframes > gmo_fcurve.raw_data.size()) {
+        throw std::runtime_error{"invalid gmo fcurve, dimensions don't match"};
+    }
+
+    channel.SetInterpolation(ConvertGMOInterpolation(gmo_fcurve.interpolation));
+    const auto fps = static_cast<float>(gmo_motion.framerate);
+
+    for (uint32_t keyframe_idx = 0; keyframe_idx < gmo_fcurve.num_keyframes; ++keyframe_idx) {
+        const auto base_idx = num_dims_per_keyframe * keyframe_idx;
+
+        KeyframeType keyframe;
+        keyframe.time = gmo_fcurve.raw_data[base_idx] / fps;
+
+        for (uint32_t d = 0; d < kNumDimensions; ++d) {
+            keyframe.value[d] = gmo_fcurve.raw_data[base_idx + 1 + d];
+        }
+
+        channel.GetKeyframes().emplace_back(std::move(keyframe));
+    }
+}
+
 auto ConvertGMO(
     const gmo::GmoModel &gmo_model, render::hal::IDevice *device, const ITextureRepository *repository,
     const IConvertLogger *logger) -> std::unique_ptr<render::Model> {
@@ -338,26 +386,72 @@ auto ConvertGMO(
     // animation conversions
     for (uint32_t gmo_motion_id = 0; gmo_motion_id < gmo_model.motions.size(); ++gmo_motion_id) {
         const auto &gmo_motion = gmo_model.motions[gmo_motion_id];
+        render::Model::Animation animation{gmo_motion.name};
+
         for (const auto &gmo_animation : gmo_motion.animations) {
             if (gmo_animation.target != gmo::GmoAnimationTarget::eBone) {
                 throw std::runtime_error{"libconv: material animations are not supported"};
             }
 
             switch (gmo_animation.property) {
-            case gmo::eAnimBoneTranslate:
+            case gmo::eAnimBoneTranslate: {
+                if (gmo_animation.target_id >= node_map.size()) {
+                    throw std::runtime_error{fmt::format(
+                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                }
+
+                const auto node_id = node_map[gmo_animation.target_id];
+                if (!node_id.has_value()) {
+                    throw std::runtime_error{fmt::format(
+                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                }
+
+                render::Model::Animation::TranslationChannel channel{node_id.value()};
+                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+
+                animation.AppendChannel(std::move(channel));
                 break;
-            case gmo::eAnimBoneScale2:
+            }
+            case gmo::eAnimBoneScale2: {
+                const auto node_id = node_map[gmo_animation.target_id];
+                if (!node_id.has_value()) {
+                    throw std::runtime_error{fmt::format(
+                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                }
+
+                render::Model::Animation::ScaleChannel channel{node_id.value()};
+                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+
+                animation.AppendChannel(std::move(channel));
                 break;
-            case gmo::eAnimBoneRotateQ:
+            }
+            case gmo::eAnimBoneRotateQ: {
+                const auto node_id = node_map[gmo_animation.target_id];
+                if (!node_id.has_value()) {
+                    throw std::runtime_error{fmt::format(
+                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                }
+
+                render::Model::Animation::RotationChannel channel{node_id.value()};
+                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+
+                animation.AppendChannel(std::move(channel));
                 break;
-            case gmo::eAnimPataponTextureEXT:
+            }
+            case gmo::eAnimPataponTextureEXT: {
+                // TODO
                 break;
-            case gmo::eAnimPataponUnknownEXT:
+            }
+            case gmo::eAnimPataponUnknownEXT: {
+                // TODO
                 break;
+            }
             default:
                 throw std::runtime_error{"libconv: unsupported target type"};
             }
         }
+
+        model->AddAnimation(std::move(animation));
     }
 
     return model;
