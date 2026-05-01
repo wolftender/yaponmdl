@@ -10,7 +10,7 @@
 namespace gmo {
 
 #ifndef NDEBUG
-#define GMO_DEBUG_PRINT(f, ...) fmt::println(stdout, f, __VA_ARGS__)
+#define GMO_DEBUG_PRINT(logger, f, ...) logger.log(fmt::format(f, __VA_ARGS__))
 #else
 #define GMO_DEBUG_PRINT(fmt, ...)
 #endif
@@ -75,6 +75,20 @@ auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_vie
     return value.value();
 }
 
+template <typename T>
+auto AssertReadAligned(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
+    const auto value = reader.ReadAligned<T>();
+    if (!value.has_value()) {
+        if (message.has_value()) {
+            throw GmoParseError{std::string{message.value()}};
+        } else {
+            throw GmoParseError{fmt::format("invalid byte read at position {}", reader.Position())};
+        }
+    }
+
+    return value.value();
+}
+
 auto AssertSeek(util::bytes::BinaryReader &reader, uint64_t position) -> void {
     const auto res = reader.Seek(position);
     if (util::bytes::BinaryReader::Result::eSuccess != res) {
@@ -88,7 +102,7 @@ auto AssertSeek(util::bytes::BinaryReader &reader, uint64_t position) -> void {
  * @param reader
  * @return GmoHeader
  */
-auto GetGmoHeader(util::bytes::BinaryReader &reader) -> GmoHeader {
+auto GetGmoHeader(const GmoLogger &logger, util::bytes::BinaryReader &reader) -> GmoHeader {
     GmoHeader header = {};
     header.signature = AssertRead<uint32_t>(reader, "invalid header");
     header.version = AssertRead<uint32_t>(reader, "invalid header");
@@ -108,6 +122,7 @@ auto GetGmoHeader(util::bytes::BinaryReader &reader) -> GmoHeader {
     }
 
     GMO_DEBUG_PRINT(
+        logger,
         "gmo header check: \n\tsignature:\t{:#010x}\n\tversion:\t{:#010x}\n\tstyle:\t\t{:#010x}\n\toption:\t\t{:#010x}",
         header.signature, header.version, header.style, header.option);
 
@@ -309,18 +324,18 @@ constexpr auto ToString(SceGuFmtIndex v) -> const char * {
 }
 
 inline auto ColorPF5650ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b1111100000000000} & color;
-    const auto g = uint16_t{0b0000011111100000} & color;
-    const auto b = uint16_t{0b0000000000011111} & color;
+    const auto r = uint16_t{0b0000000000011111} & color;
+    const auto g = (uint16_t{0b0000011111100000} & color) >> 5;
+    const auto b = (uint16_t{0b1111100000000000} & color) >> 11;
 
     return {static_cast<float>(r) / 31.0f, static_cast<float>(g) / 63.0f, static_cast<float>(b) / 31.0f, 1.0f};
 }
 
 inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b1111100000000000} & color;
-    const auto g = uint16_t{0b0000011111000000} & color;
-    const auto b = uint16_t{0b0000000000111110} & color;
-    const auto a = uint16_t{0b0000000000000001} & color;
+    const auto r = uint16_t{0b0000000000011111} & color;
+    const auto g = (uint16_t{0b0000001111100000} & color) >> 5;
+    const auto b = (uint16_t{0b0111110000000000} & color) >> 10;
+    const auto a = (uint16_t{0b1000000000000000} & color) >> 15;
 
     return {
         static_cast<float>(r) / 31.0f, static_cast<float>(g) / 31.0f, static_cast<float>(b) / 31.0f,
@@ -328,10 +343,10 @@ inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0xf000} & color;
-    const auto g = uint16_t{0x0f00} & color;
-    const auto b = uint16_t{0x00f0} & color;
-    const auto a = uint16_t{0x000f} & color;
+    const auto r = uint16_t{0x000f} & color;
+    const auto g = (uint16_t{0x00f0} & color) >> 4;
+    const auto b = (uint16_t{0x0f00} & color) >> 8;
+    const auto a = (uint16_t{0xf000} & color) >> 12;
 
     return {
         static_cast<float>(r) / 15.0f, static_cast<float>(g) / 15.0f, static_cast<float>(b) / 15.0f,
@@ -339,10 +354,10 @@ inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
 }
 
 inline auto ColorPF8888ToRGBA8(uint32_t color) -> glm::fvec4 {
-    const auto r = 0xff000000 & color;
-    const auto g = 0x00ff0000 & color;
-    const auto b = 0x0000ff00 & color;
-    const auto a = 0x000000ff & color;
+    const auto r = 0x000000ff & color;
+    const auto g = (0x0000ff00 & color) >> 8;
+    const auto b = (0x00ff0000 & color) >> 16;
+    const auto a = (0xff000000 & color) >> 24;
 
     return {
         static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f,
@@ -431,6 +446,25 @@ template <typename T, uint32_t D> auto AssertReadFVecN(util::bytes::BinaryReader
     return val;
 };
 
+template <uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<float>(reader));
+    }
+
+    return val;
+};
+
+template <typename T, uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    constexpr float kRange = static_cast<float>(std::numeric_limits<T>::max());
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<T>(reader)) / kRange;
+    }
+
+    return val;
+};
+
 /**
  * @brief Retrieves the total count of children chunks in the given GMO chunk
  *
@@ -504,16 +538,16 @@ auto CountChunks(const util::bytes::BinaryReader &parent_reader) -> uint32_t {
  */
 class GmoLoaderContext final {
 public:
-    GmoLoaderContext(std::span<const uint8_t> buffer) : buffer_{buffer} {
+    GmoLoaderContext(const GmoLogger &logger, std::span<const uint8_t> buffer) : logger_{logger}, buffer_{buffer} {
         util::bytes::BinaryReader reader{buffer};
-        (void)GetGmoHeader(reader);
+        (void)GetGmoHeader(logger_, reader);
 
         // realistically, we don't need to count the chunks
         // but it is done here anyways to validate the file
         // also this allows to reduce the number of reallocs
         const auto num_chunks = CountChunks(reader);
 
-        GMO_DEBUG_PRINT("detected gmo structure with {} chunks", num_chunks);
+        GMO_DEBUG_PRINT(logger_, "detected gmo structure with {} chunks", num_chunks);
         map_.reserve(num_chunks);
 
         // initialize the chunk tree
@@ -608,11 +642,6 @@ private:
                 AssertSeek(reader, args_offset);
                 const auto num_bones = AssertRead<uint32_t>(reader);
 
-                if (num_bones > 8) {
-                    throw GmoParseError{fmt::format(
-                        "cannot have more than 8 blend bones, requested: {}, in chunk {}", num_bones, bone_chunk.name)};
-                }
-
                 bone.blend_bones.reserve(num_bones);
                 for (uint32_t i = 0; i < num_bones; ++i) {
                     bone.blend_bones.emplace_back(RefIndex(AssertRead<uint32_t>(reader)));
@@ -624,11 +653,6 @@ private:
             case SCEGMO_BLEND_OFFSETS: {
                 AssertSeek(reader, args_offset);
                 const auto num_offsets = AssertRead<uint32_t>(reader);
-
-                if (num_offsets > 8) {
-                    throw GmoParseError{
-                        fmt::format("cannot have more than 8 blend offsets, requested: {}", num_offsets)};
-                }
 
                 bone.blend_offsets.resize(num_offsets);
                 for (uint32_t i = 0; i < num_offsets; ++i) {
@@ -745,12 +769,12 @@ private:
                 const auto unknown0 = AssertRead<uint32_t>(reader);
                 const auto unknown1 = AssertRead<uint32_t>(reader);
 
-                GMO_DEBUG_PRINT("type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
                 break;
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for bone {} with name {}", type, bone_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for bone {} with name {}", type, bone_chunk.name);
                 break;
             }
 
@@ -766,6 +790,7 @@ private:
     }
 
     auto LoadVertexArray(const GmoChunk &array_chunk) const -> GmoVertexArray {
+        constexpr std::array<uint32_t, 8> kAligns = {0, 0, 1, 3, 1, 1, 1, 3};
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(array_chunk) != SCEGMO_ARRAYS) {
@@ -825,6 +850,7 @@ private:
         array.num_weights = num_weights;
 
         GMO_DEBUG_PRINT(
+            logger_,
             "load vertex array:\n"
             "\tfmt_texture:\t\t{}\n"
             "\tfmt_color:\t\t{}\n"
@@ -839,17 +865,22 @@ private:
             ToString(static_cast<SceGuFmtWeight>(fmt_weight)), ToString(static_cast<SceGuFmtIndex>(fmt_index)),
             num_weights, num_morphs);
 
+        if (num_weights > 8) {
+            throw std::runtime_error{
+                fmt::format("gmo vertex does not support more than 8 weights, requested {}", num_weights)};
+        }
+
         using Reader = util::bytes::BinaryReader;
         const auto fnReadUv = [&]() -> glm::fvec2 (*)(Reader &) {
             switch (fmt_texture) {
             case eSceGuFmtTextureNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec2{0.0f, 0.0f}; };
             case eSceGuFmtTextureUBYTE:
-                return [](Reader &r) { return AssertReadFVecN<uint8_t, 2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint8_t, 2>(r); };
             case eSceGuFmtTextureUSHORT:
-                return [](Reader &r) { return AssertReadFVecN<uint16_t, 2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint16_t, 2>(r); };
             case eSceGuFmtTextureFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<2>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<2>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported texture uv format {} in chunk {}", fmt_texture, array_chunk.name)};
@@ -862,22 +893,22 @@ private:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f}; };
             case eSceGuFmtColorPF5650:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF5650ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF5551:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF5551ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF4444:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
                     return ColorPF4444ToRGBA8(rgba);
                 };
             case eSceGuFmtColorPF8888:
                 return [](Reader &r) {
-                    const auto rgba = AssertRead<uint16_t>(r);
+                    const auto rgba = AssertReadAligned<uint32_t>(r);
                     return ColorPF8888ToRGBA8(rgba);
                 };
             default:
@@ -891,11 +922,11 @@ private:
             case eSceGuFmtNormalNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
             case eSceGuFmtNormalBYTE:
-                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
             case eSceGuFmtNormalSHORT:
-                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
             case eSceGuFmtNormalFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex normal format {} in chunk {}", fmt_normal, array_chunk.name)};
@@ -907,11 +938,11 @@ private:
             case eSceGuFmtVertexNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
             case eSceGuFmtVertexBYTE:
-                return [](Reader &r) { return AssertReadFVecN<int8_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
             case eSceGuFmtVertexSHORT:
-                return [](Reader &r) { return AssertReadFVecN<int16_t, 3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
             case eSceGuFmtVertexFLOAT:
-                return [](Reader &r) { return AssertReadFVecN<3>(r); };
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex position format {} in chunk {}", fmt_vertex, array_chunk.name)};
@@ -923,17 +954,23 @@ private:
             case eSceGuFmtWeightNONE:
                 return []([[maybe_unused]] Reader &r) { return 0.0f; };
             case eSceGuFmtWeightUBYTE:
-                return []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint8_t>(r)) / 255.0f; };
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint8_t>(r)) / 255.0f;
+                };
             case eSceGuFmtWeightUSHORT:
-                return
-                    []([[maybe_unused]] Reader &r) { return static_cast<float>(AssertRead<uint16_t>(r)) / 65535.0f; };
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint16_t>(r)) / 65535.0f;
+                };
             case eSceGuFmtWeightFLOAT:
-                return []([[maybe_unused]] Reader &r) { return AssertRead<float>(r); };
+                return []([[maybe_unused]] Reader &r) { return AssertReadAligned<float>(r); };
             default:
                 throw GmoParseError{
                     fmt::format("unsupported vertex weight format {} in chunk {}", fmt_weight, array_chunk.name)};
             }
         }();
+
+        const uint32_t align =
+            kAligns[fmt_texture] | kAligns[fmt_color] | kAligns[fmt_normal] | kAligns[fmt_vertex] | kAligns[fmt_weight];
 
         array.vertices.reserve(native_num_verts);
         for (uint32_t i = 0; i < native_num_verts; ++i) {
@@ -949,6 +986,12 @@ private:
             vertex.position = fnReadPosition(reader);
 
             array.vertices.emplace_back(vertex);
+
+            const auto position = reader.Position();
+            const auto aligned_position = (position + align) & ~align;
+            if (aligned_position > position) {
+                (void)reader.ReadBuffer(aligned_position - position);
+            }
         }
 
         return array;
@@ -1063,15 +1106,15 @@ private:
                 // sequential means unindexed
                 // instead the first index will be a uint16_t representing the vertex offset to draw from
                 if (GmoPrimitiveFlags::SCEGMO_PRIM_SEQUENTIAL & native_mode) {
-                    draw.indices.reserve(native_num_verts);
+                    draw.indices.reserve(native_num_verts * native_num_prims);
 
                     auto index = AssertRead<uint16_t>(reader);
-                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                    for (uint32_t i = 0; i < native_num_verts * native_num_prims; ++i) {
                         draw.indices.emplace_back(index++);
                     }
                 } else {
-                    draw.indices.reserve(native_num_verts);
-                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                    draw.indices.reserve(native_num_verts * native_num_prims);
+                    for (uint32_t i = 0; i < native_num_verts * native_num_prims; ++i) {
                         draw.indices.emplace_back(AssertRead<uint16_t>(reader));
                     }
                 }
@@ -1081,7 +1124,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for mesh {} with name {}", type, mesh_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for mesh {} with name {}", type, mesh_chunk.name);
                 break;
             }
 
@@ -1132,7 +1175,7 @@ private:
                 break;
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for part {} in chunk {}", type, part_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for part {} in chunk {}", type, part_chunk.name);
                 break;
             }
 
@@ -1186,7 +1229,8 @@ private:
                     layer.map_type = GmoMaterialLayerMapType::eRefraction;
                     break;
                 default:
-                    GMO_DEBUG_PRINT("invalid type {} for material layer with name {}", native_type, layer_chunk.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "invalid type {} for material layer with name {}", native_type, layer_chunk.name);
                     break;
                 }
 
@@ -1214,21 +1258,21 @@ private:
                 if (native_mode < 6) {
                     layer.blend_op = kBlendOps[native_mode];
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend op {} for layer {}", native_mode, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend op {} for layer {}", native_mode, layer_chunk.name);
                 }
 
                 if (native_src < 10) {
                     layer.blend_func1 = kBlendFuncs[native_src];
                     layer.src_mask = native_src > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend src {} for layer {}", native_src, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend src {} for layer {}", native_src, layer_chunk.name);
                 }
 
                 if (native_dst < 10) {
                     layer.blend_func1 = kBlendFuncs[native_dst];
                     layer.dst_mask = native_dst > 0 ? 0xffffffff : 0;
                 } else {
-                    GMO_DEBUG_PRINT("invalid blend dst {} for layer {}", native_dst, layer_chunk.name);
+                    GMO_DEBUG_PRINT(logger_, "invalid blend dst {} for layer {}", native_dst, layer_chunk.name);
                 }
 
                 break;
@@ -1248,7 +1292,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for layer {} with name {}", type, layer_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for layer {} with name {}", type, layer_chunk.name);
                 break;
             }
 
@@ -1395,7 +1439,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for material {} with name {}", type, material_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for material {} with name {}", type, material_chunk.name);
                 break;
             }
 
@@ -1450,14 +1494,14 @@ private:
                 }
 
                 GMO_DEBUG_PRINT(
-                    "gmo texture chunk {} has binary texture in +{}, sized {}", texture_chunk.name,
+                    logger_, "gmo texture chunk {} has binary texture in +{}, sized {}", texture_chunk.name,
                     GetChunkArgsOffset(chunk), size);
                 texture.data.assign(read_buffer->begin(), read_buffer->end());
                 break;
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for texture {} with name {}", type, texture_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for texture {} with name {}", type, texture_chunk.name);
                 break;
             }
 
@@ -1510,7 +1554,8 @@ private:
             break;
 
         default:
-            GMO_DEBUG_PRINT("invalid fcurve interpolation type {} in fcurve {}", interpolation, fcurve_chunk.name);
+            GMO_DEBUG_PRINT(
+                logger_, "invalid fcurve interpolation type {} in fcurve {}", interpolation, fcurve_chunk.name);
             fcurve.interpolation = GmoFCurveInterpolation::eConstant;
             break;
         }
@@ -1521,8 +1566,10 @@ private:
         const auto num_elements = kElementsPerInterpType[static_cast<uint32_t>(fcurve.interpolation)];
         const auto stride = num_elements * native_num_dims + 1;
 
+        const auto is_float16 = (SCEGMO_FCURVE_FLOAT16 & native_format) == SCEGMO_FCURVE_FLOAT16;
         const auto total_size = stride * native_num_keys;
-        const auto total_size_bytes = sizeof(float) * total_size;
+        const auto word_size = is_float16 ? sizeof(uint16_t) : sizeof(float);
+        const auto total_size_bytes = word_size * total_size;
 
         const auto buffer = reader.ReadBuffer(total_size_bytes);
         if (!buffer.has_value()) {
@@ -1532,7 +1579,17 @@ private:
 
         // TODO: endianness?
         fcurve.raw_data.resize(total_size);
-        std::memcpy(fcurve.raw_data.data(), buffer->data(), total_size_bytes);
+        if (is_float16) {
+            const uint16_t *ptr = reinterpret_cast<const uint16_t *>(buffer->data());
+            for (uint32_t i = 0; i < total_size; ++i) {
+                fcurve.raw_data[i] = util::bytes::F16ToF32(*ptr++);
+            }
+        } else {
+            const float *ptr = reinterpret_cast<const float *>(buffer->data());
+            for (uint32_t i = 0; i < total_size; ++i) {
+                fcurve.raw_data[i] = *ptr++;
+            }
+        }
 
         return fcurve;
     }
@@ -1593,7 +1650,8 @@ private:
                     break;
 
                 default:
-                    GMO_DEBUG_PRINT("invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
                     break;
                 }
 
@@ -1676,7 +1734,8 @@ private:
 
                 default:
                     anim.property = static_cast<GmoAnimationProperty>(native_cmd);
-                    GMO_DEBUG_PRINT("using custom property for animation {} for motion {}", native_cmd, motion.name);
+                    GMO_DEBUG_PRINT(
+                        logger_, "using custom property for animation {} for motion {}", native_cmd, motion.name);
                     break;
                 }
 
@@ -1685,7 +1744,7 @@ private:
             }
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for motion {} with name {}", type, motion_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for motion {} with name {}", type, motion_chunk.name);
                 break;
             }
 
@@ -1709,6 +1768,7 @@ private:
         const auto num_motion_chunks = CountChildrenOfType(model_chunk, SCEGMO_MOTION);
 
         GMO_DEBUG_PRINT(
+            logger_,
             "validated gmo "
             "model:\n\tbones:\t\t{}\n\tparts:\t\t{}\n\tmaterials:\t{}\n\ttextures:\t{}\n\tmotions:\t{}",
             num_bone_chunks, num_part_chunks, num_material_chunks, num_texture_chunks, num_motion_chunks);
@@ -1763,7 +1823,7 @@ private:
                 throw GmoParseError{fmt::format("SCEGMO_VERTEX_OFFSET is unsupported")};
 
             default:
-                GMO_DEBUG_PRINT("skipping chunk type for model {} with name {}", type, model_chunk.name);
+                GMO_DEBUG_PRINT(logger_, "skipping chunk type for model {} with name {}", type, model_chunk.name);
                 break;
             }
 
@@ -1877,13 +1937,43 @@ private:
         }
     }
 
+    const GmoLogger &logger_;
+
     std::span<const uint8_t> buffer_;
     std::vector<GmoChunk> map_;
 };
 
-std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer) {
-    GmoLoaderContext context{buffer};
+class GmoConsoleLogger final : public GmoLogger {
+public:
+    auto log(std::string_view log_message) const -> void override {
+        fmt::println("[libgmo console log] {}", log_message);
+    }
+};
+
+std::vector<GmoModel> LoadModelFromMemory(std::span<const uint8_t> buffer, const GmoLogger *logger) {
+    GmoConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    GmoLoaderContext context{*logger, buffer};
     return context.LoadAllModels();
+}
+
+auto CheckHeader(std::span<const uint8_t> buffer, const GmoLogger *logger) -> bool {
+    GmoConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    util::bytes::BinaryReader reader{buffer};
+    try {
+        (void)GetGmoHeader(*logger, reader);
+    } catch (const std::exception &) {
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace gmo
