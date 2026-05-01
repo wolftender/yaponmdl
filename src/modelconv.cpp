@@ -52,32 +52,46 @@ auto FetchBitmap(const ITextureRepository *repository, std::string_view name) ->
     return bm.value();
 }
 
-auto ConvertIndicesGMO(std::span<const uint32_t> input, gmo::GmoDrawPrimitive primitive) -> std::vector<uint32_t> {
+auto ConvertIndicesGMO(const gmo::GmoDrawArray &gmo_draw_array) -> std::vector<uint32_t> {
     std::vector<uint32_t> indices;
-    switch (primitive) {
+    switch (gmo_draw_array.primitive) {
     case gmo::GmoDrawPrimitive::eTriangles:
-        indices.assign(input.begin(), input.end());
+        for (uint32_t prim_idx = 0; prim_idx < gmo_draw_array.num_primitives; ++prim_idx) {
+            uint32_t base = prim_idx * gmo_draw_array.num_vertices;
+            std::copy(
+                gmo_draw_array.indices.begin() + base,
+                gmo_draw_array.indices.begin() + base + gmo_draw_array.num_vertices, std::back_inserter(indices));
+        }
+
         break;
 
     case gmo::GmoDrawPrimitive::eTriangleFan:
-        for (uint32_t i = 1; i < input.size() - 1; ++i) {
-            indices.emplace_back(input[0]);
-            indices.emplace_back(input[i + 0]);
-            indices.emplace_back(input[i + 1]);
+        for (uint32_t prim_idx = 0; prim_idx < gmo_draw_array.num_primitives; ++prim_idx) {
+            uint32_t base = prim_idx * gmo_draw_array.num_vertices;
+
+            for (uint32_t i = 1; i < gmo_draw_array.num_vertices - 1; ++i) {
+                indices.emplace_back(gmo_draw_array.indices[base + 0]);
+                indices.emplace_back(gmo_draw_array.indices[base + i + 0]);
+                indices.emplace_back(gmo_draw_array.indices[base + i + 1]);
+            }
         }
 
         break;
 
     case gmo::GmoDrawPrimitive::eTriangleStrip:
-        for (uint32_t c = 0; c < input.size() - 2; ++c) {
-            if (c % 2 == 0) {
-                indices.emplace_back(input[c + 0]);
-                indices.emplace_back(input[c + 1]);
-                indices.emplace_back(input[c + 2]);
-            } else {
-                indices.emplace_back(input[c + 0]);
-                indices.emplace_back(input[c + 2]);
-                indices.emplace_back(input[c + 1]);
+        for (uint32_t prim_idx = 0; prim_idx < gmo_draw_array.num_primitives; ++prim_idx) {
+            uint32_t base = prim_idx * gmo_draw_array.num_vertices;
+
+            for (uint32_t c = 0; c < gmo_draw_array.num_vertices - 2; ++c) {
+                if (c % 2 == 0) {
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 0]);
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 1]);
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 2]);
+                } else {
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 0]);
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 2]);
+                    indices.emplace_back(gmo_draw_array.indices[base + c + 1]);
+                }
             }
         }
 
@@ -294,8 +308,7 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id = model->AddMesh(
-            vertices, ConvertIndicesGMO(gmo_draw_array.indices, gmo_draw_array.primitive), material_id.value());
+        const auto mesh_id = model->AddMesh(vertices, ConvertIndicesGMO(gmo_draw_array), material_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }
@@ -345,9 +358,8 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id = model->AddAnimatedMesh(
-            vertices, ConvertIndicesGMO(gmo_draw_array.indices, gmo_draw_array.primitive), material_id.value(),
-            skin_id.value());
+        const auto mesh_id =
+            model->AddAnimatedMesh(vertices, ConvertIndicesGMO(gmo_draw_array), material_id.value(), skin_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }
@@ -396,14 +408,20 @@ auto ConvertGMO(
             switch (gmo_animation.property) {
             case gmo::eAnimBoneTranslate: {
                 if (gmo_animation.target_id >= node_map.size()) {
-                    throw std::runtime_error{fmt::format(
-                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
                 }
 
                 const auto node_id = node_map[gmo_animation.target_id];
                 if (!node_id.has_value()) {
-                    throw std::runtime_error{fmt::format(
-                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
                 }
 
                 render::Model::Animation::TranslationChannel channel{node_id.value()};
@@ -413,10 +431,21 @@ auto ConvertGMO(
                 break;
             }
             case gmo::eAnimBoneScale2: {
+                if (gmo_animation.target_id >= node_map.size()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
                 const auto node_id = node_map[gmo_animation.target_id];
                 if (!node_id.has_value()) {
-                    throw std::runtime_error{fmt::format(
-                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
                 }
 
                 render::Model::Animation::ScaleChannel channel{node_id.value()};
@@ -426,10 +455,21 @@ auto ConvertGMO(
                 break;
             }
             case gmo::eAnimBoneRotateQ: {
+                if (gmo_animation.target_id >= node_map.size()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
                 const auto node_id = node_map[gmo_animation.target_id];
                 if (!node_id.has_value()) {
-                    throw std::runtime_error{fmt::format(
-                        "libconv: animation {} has invalid target {}", gmo_animation.name, gmo_animation.target_id)};
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
                 }
 
                 render::Model::Animation::RotationChannel channel{node_id.value()};

@@ -1106,15 +1106,15 @@ private:
                 // sequential means unindexed
                 // instead the first index will be a uint16_t representing the vertex offset to draw from
                 if (GmoPrimitiveFlags::SCEGMO_PRIM_SEQUENTIAL & native_mode) {
-                    draw.indices.reserve(native_num_verts);
+                    draw.indices.reserve(native_num_verts * native_num_prims);
 
                     auto index = AssertRead<uint16_t>(reader);
-                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                    for (uint32_t i = 0; i < native_num_verts * native_num_prims; ++i) {
                         draw.indices.emplace_back(index++);
                     }
                 } else {
-                    draw.indices.reserve(native_num_verts);
-                    for (uint32_t i = 0; i < native_num_verts; ++i) {
+                    draw.indices.reserve(native_num_verts * native_num_prims);
+                    for (uint32_t i = 0; i < native_num_verts * native_num_prims; ++i) {
                         draw.indices.emplace_back(AssertRead<uint16_t>(reader));
                     }
                 }
