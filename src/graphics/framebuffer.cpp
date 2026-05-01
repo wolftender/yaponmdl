@@ -2,6 +2,38 @@
 
 namespace gl {
 
+static constexpr auto FramebufferStatusToString(GLenum status) -> std::string_view {
+    switch (status) {
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+        return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+        return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+        return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+        return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+
+    case GL_FRAMEBUFFER_UNSUPPORTED:
+        return "GL_FRAMEBUFFER_UNSUPPORTED";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+        return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+
+    case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+        return "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS";
+
+    case 0:
+        return "glCheckFramebufferStatus error";
+
+    case GL_FRAMEBUFFER_UNDEFINED:
+    default:
+        return "GL_FRAMEBUFFER_UNDEFINED";
+    }
+}
+
 Framebuffer::Framebuffer(GLContext::Executor executor, uint32_t width, uint32_t height, const Description &description)
     : executor_{executor}, width_{width}, height_{height}, handle_{factories::MakeFramebuffer(executor)},
       description_{description}, depth_{executor} {
@@ -45,8 +77,15 @@ Framebuffer::Framebuffer(GLContext::Executor executor, uint32_t width, uint32_t 
         }
 
         GL_CHECK(glDrawBuffers(static_cast<GLsizei>(active_attachments.size()), active_attachments.data()));
+
+        const auto status = GL_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER));
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error{fmt::format("framebuffer is incomplete: {}", FramebufferStatusToString(status))};
+        }
+
         GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
         GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+        GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     });
 }
 
@@ -92,14 +131,6 @@ MultisampleFramebuffer::MultisampleFramebuffer(
                 GL_CHECK(glTexImage2DMultisample(
                     GL_TEXTURE_2D_MULTISAMPLE, samples_, static_cast<GLint>(parameters.format), GetWidth(), GetHeight(),
                     GL_TRUE));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_WRAP_S, static_cast<GLint>(parameters.wrap_s)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_WRAP_T, static_cast<GLint>(parameters.wrap_t)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(parameters.mag_filter)));
-                GL_CHECK(glTexParameteri(
-                    GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MIN_FILTER, static_cast<GLint>(parameters.min_filter)));
 
                 const auto attachment_id = GL_COLOR_ATTACHMENT0 + i;
                 GL_CHECK(glFramebufferTexture2D(
@@ -120,8 +151,8 @@ MultisampleFramebuffer::MultisampleFramebuffer(
             GL_CHECK(glTexImage2DMultisample(
                 GL_TEXTURE_2D_MULTISAMPLE, samples_, static_cast<GLint>(parameters.format), GetWidth(), GetHeight(),
                 GL_TRUE));
-            GL_CHECK(
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, *msaa_depth_texture_, 0));
+            GL_CHECK(glFramebufferTexture2D(
+                GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, *msaa_depth_texture_, 0));
         } else {
             msaa_depth_ = factories::MakeRenderbuffer(executor_);
 
@@ -132,8 +163,15 @@ MultisampleFramebuffer::MultisampleFramebuffer(
         }
 
         GL_CHECK(glDrawBuffers(static_cast<GLsizei>(active_attachments.size()), active_attachments.data()));
+
+        const auto status = GL_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER));
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error{fmt::format("framebuffer is incomplete: {}", FramebufferStatusToString(status))};
+        }
+
         GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
         GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+        GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     });
 }
 

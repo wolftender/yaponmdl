@@ -1,15 +1,26 @@
+#include <fstream>
+#include <filesystem>
+
 #include <wx/file.h>
+#include <wx/filename.h>
 
 #include "application.hpp"
 #include "hexview.hpp"
-#include "textureview.hpp"
+#include "modelconv.hpp"
 
 #include "formats/gxt.hpp"
+#include "formats/gmo.hpp"
+#include "formats/act.hpp"
+
+namespace fs = std::filesystem;
 
 enum MenuCommand {
-    eMenuCommandFileOpenFile,
+    eMenuCommandFileOpenFile = 10000,
     eMenuCommandFileOpenDirectory,
-    eMenuCommandViewShowLogs,
+    eMenuCommandViewShowLogs = 20000,
+    eMenuCommandViewZoomIn,
+    eMenuCommandViewZoomOut,
+    eMenuCommandViewResetView,
 };
 
 DirectoryViewControl::DirectoryViewControl(
@@ -59,6 +70,10 @@ ModelBrowserFrame::ModelBrowserFrame()
 
     wxMenu *menu_view = new wxMenu;
     menu_view->Append(eMenuCommandViewShowLogs, "&Show logs", "Displays the log window");
+    menu_view->AppendSeparator();
+    menu_view->Append(eMenuCommandViewZoomIn, "Zoom in", "Increase zoom");
+    menu_view->Append(eMenuCommandViewZoomOut, "Zoom out", "Decrease zoom");
+    menu_view->Append(eMenuCommandViewResetView, "Reset view", "Restores view to the defaults");
 
     wxMenu *menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
@@ -68,24 +83,32 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_bar->Append(menu_view, "&View");
     menu_bar->Append(menu_help, "&Help");
 
-    log_window_ = new wxLogWindow(nullptr, "Log window", false, false);
+    log_window_ = new wxLogWindow(this, "Log window", false, false);
+    wxLog::EnableLogging(true);
     wxLog::SetActiveTarget(log_window_);
+    wxLog::SetLogLevel(wxLOG_Message);
     log_window_->Show(false);
+
+    wxLogMessage("initialized application");
 
     SetMenuBar(menu_bar);
     CreateStatusBar();
 
     wxBoxSizer *main_sizer = new wxBoxSizer(wxHORIZONTAL);
-    main_sizer->SetMinSize(640, 480);
+    main_sizer->SetMinSize(900, 600);
 
-    splitter_ = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxSize{500, 500}, wxSP_3D | wxSP_LIVE_UPDATE);
+    splitter_ =
+        new ConstrainedSplitter(this, wxID_ANY, wxDefaultPosition, wxSize{500, 500}, wxSP_3D | wxSP_LIVE_UPDATE);
+    splitter_->SetMinimumWindow1Size(300);
+    splitter_->SetMinimumWindow2Size(600);
     splitter_->SetMinimumPaneSize(300);
 
     notebook_left_ = new wxNotebook(splitter_, wxID_ANY);
     notebook_right_ = new wxNotebook(splitter_, wxID_ANY);
 
+    working_dir_ = wxGetCwd();
     dir_control_ = new DirectoryViewControl(
-        notebook_left_, wxID_ANY, wxGetCwd(), wxGetCwd(), wxDefaultPosition, wxDefaultSize,
+        notebook_left_, wxID_ANY, working_dir_, working_dir_, wxDefaultPosition, wxDefaultSize,
         wxDIRCTRL_SELECT_FIRST | wxDIRCTRL_3D_INTERNAL);
     dir_control_->SetDefaultPath(wxGetCwd());
     dir_control_->SetPath(wxGetCwd());
@@ -97,6 +120,7 @@ ModelBrowserFrame::ModelBrowserFrame()
 
     hex_viewer_ = nullptr;
 
+    EnableViewerOptions(false);
     SetSizerAndFit(main_sizer);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
@@ -105,15 +129,20 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
+    notebook_right_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &ModelBrowserFrame::OnPageChanged, this);
 }
 
 auto ModelBrowserFrame::CloseCurrentFile() -> void {
+    EnableViewerOptions(false);
+
     if (hex_viewer_) {
         hex_viewer_->ClearBufferView();
         hex_viewer_->Hide();
     }
 
     hex_viewer_ = nullptr;
+    model_viewer_ = nullptr;
+    texture_viewer_ = nullptr;
 
     // gl context needs to be shown in order to allow for cleanup
     // this probably shold be fixed in a different way
@@ -158,10 +187,195 @@ auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> vo
 auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {}
 auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
+class GmoWxLogger : public gmo::GmoLogger {
+public:
+    auto log(std::string_view message) const -> void override {
+        wxLogMessage("libgmo message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
+class ConvWxLogger : public conv::IConvertLogger {
+public:
+    auto Log(std::string_view message) const -> void override {
+        wxLogMessage("libconv message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
+class GmoTextureRepository final : public conv::ITextureRepository {
+public:
+    GmoTextureRepository(const std::string &path) {
+        if (!fs::exists(path)) {
+            return;
+        }
+
+        const auto is_file = fs::is_regular_file(path);
+        const auto is_dir = fs::is_directory(path);
+
+        if (is_file) {
+            const auto file_dir = fs::path{path}.parent_path();
+            MapDirectory(file_dir);
+        } else if (is_dir) {
+            MapDirectory(fs::path{path});
+        }
+    }
+
+    auto FetchTexture(std::string_view name) const -> std::optional<Bitmap> override {
+        const auto ext_position = name.find_last_of('.');
+        const auto iter = [&]() {
+            if (ext_position != std::string::npos) {
+                return dir_tree_.find(std::string{name.substr(0, ext_position)});
+            } else {
+                return dir_tree_.find(std::string{name});
+            }
+        }();
+
+        if (iter == dir_tree_.end()) {
+            return std::nullopt;
+        }
+
+        // load bitmap
+        std::fstream fs{iter->second, std::ios::in | std::ios::binary};
+
+        if (!fs.good()) {
+            wxLogError(wxString::Format("texture repo: failed to load file %s", iter->second));
+            return std::nullopt;
+        }
+
+        fs.seekg(0, std::ios::end);
+        const auto file_size = fs.tellg();
+        fs.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> buffer;
+        buffer.resize(16);
+
+        fs.read(reinterpret_cast<char *>(buffer.data()), 16);
+        if (!gxt::CheckHeader(buffer)) {
+            wxLogError(wxString::Format("texture repo: invalid texture %s", iter->second));
+            return std::nullopt;
+        }
+
+        buffer.resize(file_size);
+        fs.seekg(0, std::ios::beg);
+        fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
+
+        std::vector<gxt::GxtImageBitmap> bitmaps;
+        try {
+            bitmaps = gxt::LoadBitmaps(buffer);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", iter->second, e.what()));
+            return std::nullopt;
+        }
+
+        if (bitmaps.size() == 0) {
+            wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", iter->second));
+            return std::nullopt;
+        }
+
+        wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, iter->second));
+
+        auto &bm = bitmaps.front();
+        return Bitmap{
+            .width = bm.width,
+            .height = bm.height,
+            .plane = std::move(bm.rgba_plane),
+        };
+    }
+
+private:
+    auto MapDirectory(const fs::path &path) -> void {
+        constexpr uint32_t kLimitFiles = 1 << 14;
+        wxLogMessage(wxString::Format("texture repo: mapping directory: %s", path.c_str()));
+
+        uint32_t num_processed = 0;
+        for (const fs::directory_entry &dir_entry : fs::recursive_directory_iterator{path}) {
+            if (num_processed > kLimitFiles) {
+                wxLogMessage(
+                    wxString::Format("texture repo: the directory is too big to index, exceeded %d", kLimitFiles));
+                return;
+            }
+
+            num_processed++;
+            if (!dir_entry.is_regular_file()) {
+                continue;
+            }
+
+            const auto extension = dir_entry.path().extension();
+            const auto is_image =
+                (extension == ".tga" || extension == ".gxt" || extension == ".png" || extension == ".jpg" ||
+                 extension == ".jpeg" || extension == ".bmp");
+
+            if (!is_image) {
+                continue;
+            }
+
+            auto filename = dir_entry.path().stem().string();
+            dir_tree_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
+        }
+    }
+
+    std::unordered_map<std::string, std::string> dir_tree_;
+};
+
+class GmoLoader final : public ModelViewer::ILoader {
+public:
+    GmoLoader(std::span<const uint8_t> gmo_buffer, const std::string &directory)
+        : gmo_buffer_{gmo_buffer}, directory_{directory} {}
+
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+        std::vector<gmo::GmoModel> gmo_model;
+        GmoTextureRepository repository{directory_};
+
+        try {
+            GmoWxLogger logger;
+            gmo_model = gmo::LoadModelFromMemory(gmo_buffer_, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libgmo fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        wxLogMessage(wxString::Format("loaded %lld models from file", gmo_model.size()));
+
+        std::unique_ptr<render::Model> model;
+        try {
+            ConvWxLogger logger;
+            model = conv::ConvertGMO(gmo_model.front(), &device, &repository, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        return model;
+    }
+
+private:
+    std::span<const uint8_t> gmo_buffer_;
+    std::string directory_;
+};
+
+class ActLoader final : public ModelViewer::ILoader {
+public:
+    ActLoader(std::span<const uint8_t> act_buffer) : act_buffer_{act_buffer} {}
+
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+        std::vector<gmo::GmoModel> gmo_model;
+
+        try {
+            ConvWxLogger logger;
+            const auto act_model = act::LoadFromBinary(act_buffer_);
+            return conv::ConvertACT(act_model, &device, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libact fatal error: %s", e.what()));
+            return nullptr;
+        }
+    }
+
+private:
+    std::span<const uint8_t> act_buffer_;
+};
+
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
 
-    wxLogNull no_log;
     wxFile fs{full_path, wxFile::read};
     if (fs.Error()) {
         wxMessageBox(
@@ -195,12 +409,38 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
     hex_viewer_->Show();
 
     if (gxt::CheckHeader(current_file_)) {
-        notebook_right_->AddPage(
-            new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_), "Texture view", true);
+        texture_viewer_ = new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_);
+        notebook_right_->AddPage(texture_viewer_, "Texture view", true);
+    } else if (gmo::CheckHeader(current_file_)) {
+        model_viewer_ = new ModelDisplay(
+            std::make_unique<GmoLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
+            notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "Model view", true);
+    } else if (act::CheckHeader(current_file_)) {
+        model_viewer_ = new ModelDisplay(
+            std::make_unique<ActLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "Model view", true);
     }
 
-    notebook_right_->AddPage(hex_viewer_, "Hex view", true);
-    notebook_right_->ChangeSelection(0);
+    notebook_right_->AddPage(hex_viewer_, "Hex view", false);
+}
+
+auto ModelBrowserFrame::OnPageChanged([[maybe_unused]] wxBookCtrlEvent &event) -> void {
+    auto *widget = notebook_right_->GetCurrentPage();
+
+    if (widget == model_viewer_ && model_viewer_ != nullptr) {
+        EnableViewerOptions(true);
+    } else if (widget == texture_viewer_ && texture_viewer_ != nullptr) {
+        EnableViewerOptions(true);
+    } else {
+        EnableViewerOptions(false);
+    }
+}
+
+auto ModelBrowserFrame::EnableViewerOptions(bool enable) -> void {
+    GetMenuBar()->Enable(eMenuCommandViewZoomIn, enable);
+    GetMenuBar()->Enable(eMenuCommandViewZoomOut, enable);
+    GetMenuBar()->Enable(eMenuCommandViewResetView, enable);
 }
 
 wxIMPLEMENT_APP(ModelBrowserApplication);

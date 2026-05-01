@@ -31,6 +31,13 @@ auto operator~(const T &a) -> T {
     return static_cast<T>(~static_cast<std::underlying_type_t<T>>(a));
 }
 
+template <typename T>
+    requires std::is_same_v<std::underlying_type_t<T>, GmoFlags>
+auto FlagHas(const T &flagset, T flag) -> bool {
+    return (static_cast<std::underlying_type_t<T>>(flagset) & static_cast<std::underlying_type_t<T>>(flag)) ==
+           static_cast<std::underlying_type_t<T>>(flag);
+}
+
 template <typename T> struct Rect {
     glm::vec<2, T> min;
     glm::vec<2, T> max;
@@ -90,15 +97,12 @@ struct GmoBone {
     glm::fvec3 pivot = {0.0f, 0.0f, 0.0f};
     glm::fvec3 translation = {0.0f, 0.0f, 0.0f};
     glm::fquat rotation = {1.0f, 0.0f, 0.0f, 0.0f};
-    glm::fvec3 scale = {0.0f, 0.0f, 0.0f};
+    glm::fvec3 scale = {1.0f, 1.0f, 1.0f};
 
     glm::fvec3 bounding_min = {0.0f, 0.0f, 0.0f};
     glm::fvec3 bounding_max = {0.0f, 0.0f, 0.0f};
 
     glm::fmat4x4 local_matrix = {1.0f};
-    glm::fmat4x4 stack_matrix = {1.0f};
-    glm::fvec3 stack_scale = {0.0f, 0.0f, 0.0f};
-    glm::fmat4x4 world_matrix = {1.0f};
 };
 
 // clang-format off
@@ -298,6 +302,8 @@ enum GmoAnimationProperty {
     eAnimMaterialRefraction,
     eAnimMaterialBump,
     eAnimMaterialTextureCrop,
+    eAnimPataponTextureEXT = 0x4100,
+    eAnimPataponUnknownEXT = 0x4101,
 };
 
 struct GmoAnimation {
@@ -333,6 +339,17 @@ struct GmoFCurve {
     ///
     std::vector<float> raw_data;
 };
+
+constexpr auto NumElementsPerInterpType(GmoFCurveInterpolation interpolation) -> uint32_t {
+    constexpr std::array<uint32_t, 5> kElementsPerInterpType = {1, 1, 3, 5, 1};
+    const auto index = static_cast<uint32_t>(interpolation);
+
+    if (index < kElementsPerInterpType.size()) {
+        return kElementsPerInterpType[index];
+    }
+
+    return 0;
+}
 
 struct GmoMotion {
     std::string name;

@@ -1,12 +1,9 @@
 #include <array>
 
 #include "textureview.hpp"
+#include "resourcestore.hpp"
 
 #include "formats/gxt.hpp"
-
-#include "generated/vert_texture.glsl.h"
-#include "generated/frag_texture.glsl.h"
-#include "generated/frag_checker.glsl.h"
 
 class GxtWxLogger : public gxt::GxtLogger {
 public:
@@ -28,15 +25,13 @@ auto TextureViewer::OnInitializeGL() -> void {
     try {
         shader_texture_.emplace(
             gl::ShaderProgram{
-                GetContext().GetExecutor(),
-                std::string_view{reinterpret_cast<const char *>(kVertTexture_glsl.data()), kVertTexture_glsl.size()},
-                std::string_view{reinterpret_cast<const char *>(kFragTexture_glsl.data()), kFragTexture_glsl.size()}});
+                GetContext().GetExecutor(), memoryresource::GetVertShaderTexture(),
+                memoryresource::GetFragShaderTexture()});
 
         shader_background_.emplace(
             gl::ShaderProgram{
-                GetContext().GetExecutor(),
-                std::string_view{reinterpret_cast<const char *>(kVertTexture_glsl.data()), kVertTexture_glsl.size()},
-                std::string_view{reinterpret_cast<const char *>(kFragChecker_glsl.data()), kFragChecker_glsl.size()}});
+                GetContext().GetExecutor(), memoryresource::GetVertShaderTexture(),
+                memoryresource::GetFragShaderChecker()});
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("cannot compile shader program: %s", e.what()));
         state_ = State::eGraphicsError;

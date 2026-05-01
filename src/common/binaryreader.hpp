@@ -28,6 +28,21 @@ public:
     auto Seek(u64 location) -> Result;
     auto ReadBuffer(u64 num_bytes) -> std::optional<std::span<const u8>>;
 
+    template <IsPrimitiveType T> auto ReadAligned() -> std::optional<T> {
+        constexpr auto type_size = sizeof(T);
+        const auto end_ptr = data_span_.size();
+
+        const auto align_ptr = (ptr_ + (type_size - 1)) & ~(type_size - 1);
+        if (align_ptr + type_size > end_ptr) {
+            return std::nullopt;
+        }
+
+        T result = *(reinterpret_cast<const T *>(data_span_.data() + align_ptr));
+
+        ptr_ = align_ptr + type_size;
+        return result;
+    }
+
     template <IsPrimitiveType T> auto Read() -> std::optional<T> {
         constexpr auto type_size = sizeof(T);
         const auto end_ptr = data_span_.size();

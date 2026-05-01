@@ -76,10 +76,22 @@ private:
         for (const LayoutElement &layout_element : V::GetLayout()) {
             const auto layout_offset = static_cast<uintptr_t>(layout_element.offset);
 
-            GL_CHECK(glVertexAttribPointer(
-                static_cast<GLuint>(layout_element.index), static_cast<GLint>(layout_element.size),
-                static_cast<GLenum>(layout_element.type), GL_FALSE, static_cast<GLsizei>(layout_element.stride),
-                reinterpret_cast<void *>(layout_offset)));
+            switch (layout_element.type) {
+            case ShaderAttribType::eInt:
+            case ShaderAttribType::eUnsignedInt:
+                GL_CHECK(glVertexAttribIPointer(
+                    static_cast<GLuint>(layout_element.index), static_cast<GLint>(layout_element.size),
+                    static_cast<GLenum>(layout_element.type), static_cast<GLsizei>(layout_element.stride),
+                    reinterpret_cast<void *>(layout_offset)));
+                break;
+            default:
+                GL_CHECK(glVertexAttribPointer(
+                    static_cast<GLuint>(layout_element.index), static_cast<GLint>(layout_element.size),
+                    static_cast<GLenum>(layout_element.type), GL_FALSE, static_cast<GLsizei>(layout_element.stride),
+                    reinterpret_cast<void *>(layout_offset)));
+                break;
+            }
+
             GL_CHECK(glEnableVertexAttribArray(layout_element.index));
         }
     }

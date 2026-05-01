@@ -42,7 +42,7 @@ find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc gl)
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
     NOMINMAX
-    GLFW_INCLUDE_NONE
+    GLM_ENABLE_EXPERIMENTAL
 )
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
@@ -79,21 +79,39 @@ endfunction()
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_texture.glsl vert_texture.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_texture.glsl frag_texture.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_checker.glsl frag_checker.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_mesh.glsl frag_mesh.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_staticmesh.glsl vert_staticmesh.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_skinmesh.glsl vert_skinmesh.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_postfilter.glsl vert_postfilter.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_postfilter.glsl frag_postfilter.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_text.glsl vert_text.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_text.glsl frag_text.glsl.h)
+add_asset(${CMAKE_CURRENT_LIST_DIR}/assets/opensans.ttf opensans.ttf.h)
 
 set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/application.cpp
     ${PROGRAM_SRC_DIR}/hexview.cpp
     ${PROGRAM_SRC_DIR}/glview.cpp
     ${PROGRAM_SRC_DIR}/textureview.cpp
-    ${PROGRAM_SRC_DIR}/graphics/gl.cpp
+    ${PROGRAM_SRC_DIR}/resourcestore.cpp
+    ${PROGRAM_SRC_DIR}/modelview.cpp
+    ${PROGRAM_SRC_DIR}/modelconv.cpp
+    ${PROGRAM_SRC_DIR}/modeldisplay.cpp
+    ${PROGRAM_SRC_DIR}/constsplitter.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
     ${PROGRAM_SRC_DIR}/common/byteutils.cpp
+    ${PROGRAM_SRC_DIR}/formats/act.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/graphics/shader.cpp
+    ${PROGRAM_SRC_DIR}/graphics/buffer.cpp
     ${PROGRAM_SRC_DIR}/graphics/texture.cpp
     ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
+    ${PROGRAM_SRC_DIR}/render/model.cpp
+    ${PROGRAM_SRC_DIR}/render/text.cpp
+    ${PROGRAM_SRC_DIR}/render/device.cpp
+    ${PROGRAM_SRC_DIR}/render/camera.cpp
 )
 
 if(WIN32)

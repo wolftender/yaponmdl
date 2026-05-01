@@ -7,6 +7,9 @@
 #include <wx/notebook.h>
 
 #include "hexview.hpp"
+#include "textureview.hpp"
+#include "modeldisplay.hpp"
+#include "constsplitter.hpp"
 
 class DirectoryViewControl : public wxGenericDirCtrl {
 public:
@@ -38,14 +41,21 @@ private:
     auto OnShowLogWindow(wxCommandEvent &event) -> void;
 
     auto OnFileSelected(wxCommandEvent &event) -> void;
+    auto OnPageChanged(wxBookCtrlEvent &event) -> void;
 
-    wxSplitterWindow *splitter_ = nullptr;
+    auto EnableViewerOptions(bool enabled) -> void;
+
+    ConstrainedSplitter *splitter_ = nullptr;
     wxNotebook *notebook_left_ = nullptr;
     wxNotebook *notebook_right_ = nullptr;
 
     std::vector<uint8_t> current_file_;
 
+    ModelDisplay *model_viewer_ = nullptr;
+    TextureViewer *texture_viewer_ = nullptr;
+
     wxLogWindow *log_window_ = nullptr;
+    wxString working_dir_;
     DirectoryViewControl *dir_control_ = nullptr;
     HexViewer *hex_viewer_ = nullptr;
 };
