@@ -67,4 +67,16 @@ auto F16ToF32(uint16_t f16) -> float {
     return f32;
 }
 
+// s:e:f
+// 1:8:15 -> 1:8:23
+// ........SEEEEEEEEMMMMMMMMMMMMMMM
+// SEEEEEEEEMMMMMMMMMMMMMMMMMMMMMMM
+//
+auto F24ToF32(uint32_t f24) -> float {
+    float f32;
+    *reinterpret_cast<uint32_t *>(&f32) = (f24 & 0x00ffffff) << 8;
+
+    return f32;
+}
+
 } // namespace util::bytes
