@@ -11,6 +11,7 @@
 #include "formats/gxt.hpp"
 #include "formats/gmo.hpp"
 #include "formats/act.hpp"
+#include "formats/gxx.hpp"
 
 namespace fs = std::filesystem;
 
@@ -194,6 +195,13 @@ public:
     }
 };
 
+class GxxWxLogger : public gxx::GxxLogger {
+public:
+    auto log(std::string_view message) const -> void override {
+        wxLogMessage("libgxx message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
 class ConvWxLogger : public conv::IConvertLogger {
 public:
     auto Log(std::string_view message) const -> void override {
@@ -373,6 +381,30 @@ private:
     std::span<const uint8_t> act_buffer_;
 };
 
+class GxxLoader final : public ModelViewer::ILoader {
+public:
+    GxxLoader(std::span<const uint8_t> gxx_buffer, const std::string &directory)
+        : gxx_buffer_{gxx_buffer}, directory_{directory} {}
+
+    virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+        std::optional<gxx::GxxModel> gxx_model;
+
+        try {
+            GxxWxLogger logger;
+            const auto gxx_model = gxx::LoadModelFromMemory(gxx_buffer_, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libgxx fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        return nullptr;
+    }
+
+private:
+    std::span<const uint8_t> gxx_buffer_;
+    std::string directory_;
+};
+
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
 
@@ -415,11 +447,16 @@ auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -
         model_viewer_ = new ModelDisplay(
             std::make_unique<GmoLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
             notebook_right_);
-        notebook_right_->AddPage(model_viewer_, "Model view", true);
+        notebook_right_->AddPage(model_viewer_, "GMO Model view", true);
     } else if (act::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(
             std::make_unique<ActLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
-        notebook_right_->AddPage(model_viewer_, "Model view", true);
+        notebook_right_->AddPage(model_viewer_, "ACT Model view", true);
+    } else if (gxx::CheckHeader(current_file_)) {
+        model_viewer_ = new ModelDisplay(
+            std::make_unique<GxxLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
+            notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "GXX Model view", true);
     }
 
     notebook_right_->AddPage(hex_viewer_, "Hex view", false);
