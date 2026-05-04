@@ -126,6 +126,10 @@ public:
         MeshHandle mesh;
         glm::fmat4x4 world_matrix = {1.0f};
 
+        glm::fvec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
+        glm::fvec2 uv_offset = {0.0f, 0.0f};
+        glm::fvec2 uv_scale = {1.0f, 1.0f};
+
         std::optional<TextureHandle> diffuse_map;
         std::optional<TextureHandle> normal_map;
     };
@@ -135,6 +139,10 @@ public:
         SkinningBufferHandle skinning_buffer;
 
         glm::fmat4x4 world_matrix = {1.0f};
+
+        glm::fvec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
+        glm::fvec2 uv_offset = {0.0f, 0.0f};
+        glm::fvec2 uv_scale = {1.0f, 1.0f};
 
         std::optional<TextureHandle> diffuse_map;
         std::optional<TextureHandle> normal_map;

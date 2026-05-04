@@ -356,6 +356,9 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
             hal::StaticDrawDescription draw_desc = {
                 .mesh = mesh.GetHandle(),
                 .world_matrix = matrix,
+                .color = material.GetColor() * node.GetColor(),
+                .uv_offset = node.GetUvOffset(),
+                .uv_scale = node.GetUvScale(),
                 .diffuse_map = std::nullopt,
                 .normal_map = std::nullopt,
             };
@@ -390,6 +393,9 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
                 .mesh = anim_mesh.GetHandle(),
                 .skinning_buffer = pose.skinning_buffers_[anim_mesh_id.index()],
                 .world_matrix = world,
+                .color = material.GetColor() * node.GetColor(),
+                .uv_offset = node.GetUvOffset(),
+                .uv_scale = node.GetUvScale(),
                 .diffuse_map = std::nullopt,
                 .normal_map = std::nullopt,
             };

@@ -291,6 +291,26 @@ template <typename T, uint32_t D> auto AssertReadAlignedFVecN(util::bytes::Binar
     return val;
 };
 
+auto AssertReadColorRgba(util::bytes::BinaryReader &reader) -> glm::fvec4 {
+    glm::fvec4 color;
+    color.r = static_cast<float>(AssertRead<uint8_t>(reader)) / 255.0f;
+    color.g = static_cast<float>(AssertRead<uint8_t>(reader)) / 255.0f;
+    color.b = static_cast<float>(AssertRead<uint8_t>(reader)) / 255.0f;
+    color.a = static_cast<float>(AssertRead<uint8_t>(reader)) / 255.0f;
+
+    return color;
+}
+
+auto AssertReadColorRgbaF(util::bytes::BinaryReader &reader) -> glm::fvec4 {
+    glm::fvec4 color;
+    color.r = AssertRead<float>(reader);
+    color.g = AssertRead<float>(reader);
+    color.b = AssertRead<float>(reader);
+    color.a = AssertRead<float>(reader);
+
+    return color;
+}
+
 /**
  * @brief Retrieves the total count of children chunks in the given GMO chunk
  *
@@ -1216,47 +1236,57 @@ private:
 
             case SCEGMO_DIFFUSE: {
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                material.colors[eGmoMaterialColorDiffuse].r = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorDiffuse].g = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorDiffuse].b = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorDiffuse].a = AssertRead<float>(reader);
+                if (GetChunkArgsSize(chunk) < 4 * sizeof(float)) {
+                    material.colors[eGmoMaterialColorDiffuse] = AssertReadColorRgba(reader);
+                } else {
+                    material.colors[eGmoMaterialColorDiffuse] = AssertReadColorRgbaF(reader);
+                }
+
                 break;
             }
 
             case SCEGMO_SPECULAR: {
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                material.colors[eGmoMaterialColorSpecular].r = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorSpecular].g = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorSpecular].b = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorSpecular].a = AssertRead<float>(reader);
+                if (GetChunkArgsSize(chunk) < 5 * sizeof(float)) {
+                    material.colors[eGmoMaterialColorSpecular] = AssertReadColorRgba(reader);
+                } else {
+                    material.colors[eGmoMaterialColorSpecular] = AssertReadColorRgbaF(reader);
+                }
+
                 material.shininess = AssertRead<float>(reader);
                 break;
             }
 
             case SCEGMO_EMISSION: {
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                material.colors[eGmoMaterialColorEmission].r = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorEmission].g = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorEmission].b = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorEmission].a = AssertRead<float>(reader);
+                if (GetChunkArgsSize(chunk) < 4 * sizeof(float)) {
+                    material.colors[eGmoMaterialColorEmission] = AssertReadColorRgba(reader);
+                } else {
+                    material.colors[eGmoMaterialColorEmission] = AssertReadColorRgbaF(reader);
+                }
+
                 break;
             }
 
             case SCEGMO_AMBIENT: {
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                material.colors[eGmoMaterialColorAmbient].r = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorAmbient].g = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorAmbient].b = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorAmbient].a = AssertRead<float>(reader);
+                if (GetChunkArgsSize(chunk) < 4 * sizeof(float)) {
+                    material.colors[eGmoMaterialColorAmbient] = AssertReadColorRgba(reader);
+                } else {
+                    material.colors[eGmoMaterialColorAmbient] = AssertReadColorRgbaF(reader);
+                }
+
                 break;
             }
 
             case SCEGMO_REFLECTION: {
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                material.colors[eGmoMaterialColorReflection].r = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorReflection].g = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorReflection].b = AssertRead<float>(reader);
-                material.colors[eGmoMaterialColorReflection].a = AssertRead<float>(reader);
+                if (GetChunkArgsSize(chunk) < 4 * sizeof(float)) {
+                    material.colors[eGmoMaterialColorReflection] = AssertReadColorRgba(reader);
+                } else {
+                    material.colors[eGmoMaterialColorReflection] = AssertReadColorRgbaF(reader);
+                }
+
                 break;
             }
 

@@ -244,6 +244,7 @@ auto ConvertGMO(
     for (uint32_t gmo_material_id = 0; gmo_material_id < num_materials; ++gmo_material_id) {
         const auto &gmo_material = gmo_model.materials[gmo_material_id];
         render::Model::Material::Description desc;
+        desc.color = gmo_material.colors[gmo::eGmoMaterialColorDiffuse];
 
         for (const auto &gmo_layer : gmo_material.layers) {
             switch (gmo_layer.map_type) {
