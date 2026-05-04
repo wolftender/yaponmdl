@@ -81,6 +81,9 @@ auto Model::Pose::FromModel(const Model &model) -> std::unique_ptr<Pose> {
         pose_node.rotation_ = node.GetRotation();
         pose_node.parent_ = node.GetParent();
         pose_node.children_ = node.GetChildren();
+        pose_node.color_ = node.GetColor();
+        pose_node.uv_offset_ = node.GetUvOffset();
+        pose_node.uv_scale_ = node.GetUvScale();
 
         pose->nodes_.emplace_back(std::move(pose_node));
     }
@@ -135,8 +138,17 @@ Model::Pose::~Pose() noexcept {}
 Model::Model(hal::IDevice *device) : device_{device} {
     nodes_.emplace_back(
         Node{
-            this, NodeId{0ul}, "(root)", std::nullopt, glm::fvec3{0.0f, 0.0f, 0.0f}, glm::fvec3{1.0f, 1.0f, 1.0f},
-            glm::fquat{1.0f, 0.0f, 0.0f, 0.0f}});
+            this,
+            NodeId{0ul},
+            "(root)",
+            std::nullopt,
+            /* translation = */ glm::fvec3{0.0f, 0.0f, 0.0f},
+            /* scale       = */ glm::fvec3{1.0f, 1.0f, 1.0f},
+            /* rotation    = */ glm::fquat{1.0f, 0.0f, 0.0f, 0.0f},
+            /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+            /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
+            /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
+        });
 }
 
 auto Model::CreatePose() const -> std::unique_ptr<Pose> { return Pose::FromModel(*this); }
@@ -182,7 +194,7 @@ auto Model::AddSkin(Skin &&skin) -> std::optional<SkinId> {
 }
 
 auto Model::AddMaterial(const Material::Description &desc) -> std::optional<MaterialId> {
-    materials_.emplace_back(Material{this, desc.diffuse, desc.normal, desc.specular});
+    materials_.emplace_back(Material{this, desc});
     return MaterialId{static_cast<uint32_t>(materials_.size() - 1)};
 }
 
@@ -195,8 +207,17 @@ auto Model::AddNode(NodeId parent, std::string_view name) -> std::optional<NodeI
     NodeId id{static_cast<uint32_t>(nodes_.size())};
     nodes_.emplace_back(
         Node{
-            this, id, name, parent, glm::fvec3{0.0f, 0.0f, 0.0f}, glm::fvec3{1.0f, 1.0f, 1.0f},
-            glm::fquat{1.0f, 0.0f, 0.0f, 0.0f}});
+            this,
+            id,
+            name,
+            parent,
+            /* translation = */ glm::fvec3{0.0f, 0.0f, 0.0f},
+            /* scale       = */ glm::fvec3{1.0f, 1.0f, 1.0f},
+            /* rotation    = */ glm::fquat{1.0f, 0.0f, 0.0f, 0.0f},
+            /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+            /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
+            /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
+        });
 
     node = GetNode(parent);
     node->children_.push_back(id);
@@ -385,12 +406,43 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
     }
 }
 
+auto Model::Animation::AnyNodeChannel::Start([[maybe_unused]] Pose &pose, Data &animation_data) const -> void {
+    const auto num_keyframes = GetNumKeyframes();
+
+    if (num_keyframes == 0) { // invalid channel dont initialize?
+        return;
+    }
+
+    if (num_keyframes == 1) { // one keyframe, simply add it
+        animation_data.prev_keyframe_ = 0;
+        animation_data.next_keyframe_ = 0;
+        animation_data.prev_keyframe_time_ = 0.0f;
+        animation_data.next_keyframe_time_ = 99999.0f;
+        return;
+    }
+
+    // otherwise pick the first keyframe and the second keyframe
+    animation_data.prev_keyframe_ = 0;
+    animation_data.next_keyframe_ = 1;
+    animation_data.prev_keyframe_time_ = GetKeyframeTime(0);
+    animation_data.next_keyframe_time_ = GetKeyframeTime(1);
+}
+
+auto Model::Animation::AnyNodeChannel::Apply(float time, Pose &pose, Data &animation_data) const -> void {
+    auto node = pose.GetNode(GetNode());
+    if (!node) {
+        return;
+    }
+
+    Apply(
+        time, node, &animation_data.prev_keyframe_time_, &animation_data.next_keyframe_time_,
+        &animation_data.prev_keyframe_, &animation_data.next_keyframe_);
+}
+
 auto Model::Controller::SetAnimation(AnimationId id) -> void {
     animation_ = id;
     time_ = 0.0f;
-    translation_data_.clear();
-    rotation_data_.clear();
-    scale_data_.clear();
+    node_channel_data_.clear();
 
     InitializeAnimationData();
 }
@@ -419,38 +471,26 @@ auto Model::Controller::Seek(float time) -> void {
 }
 
 auto Model::Controller::ResetAnimationData(const Animation &animation) -> void {
-    animation.IterateChannels<Animation::TargetProperty::eTranslation>(
-        [&](uint32_t channel_id, const TranslationChannel &channel) {
-        ResetChannelData(translation_data_, channel_id, channel);
+    animation.IterateNodeChannels([&](uint32_t channel_id, const Animation::AnyNodeChannel &channel) -> void {
+        channel.Start(*pose_, node_channel_data_[channel_id]);
     });
-
-    animation.IterateChannels<Animation::TargetProperty::eRotation>(
-        [&](uint32_t channel_id, const RotationChhannel &channel) {
-        ResetChannelData(rotation_data_, channel_id, channel);
-    });
-
-    animation.IterateChannels<Animation::TargetProperty::eScale>(
-        [&](uint32_t channel_id, const ScaleChannel &channel) { ResetChannelData(scale_data_, channel_id, channel); });
 }
 
 auto Model::Controller::InitializeAnimationData() -> void {
     auto animation = model_->GetAnimation(animation_);
 
     if (animation) {
-        translation_data_.resize(animation->GetTranslationChanCount());
-        rotation_data_.resize(animation->GetRotationChanCount());
-        scale_data_.resize(animation->GetScaleChanCount());
-
+        node_channel_data_.resize(animation->GetNodeChannelCount());
         ResetAnimationData(*animation);
     }
 }
 
-using KeyframeVec3 = Model::Animation::template Keyframe<glm::fvec3>;
 using KeyframeQuat = Model::Animation::template Keyframe<glm::fquat>;
 
-inline auto interpolate(
-    Model::Animation::InterpolationMode mode, const KeyframeVec3 &k0, const KeyframeVec3 &k1, float t,
-    glm::fvec3 *result) -> void {
+template <AnimationPropertyType T>
+inline auto Interpolate(
+    Model::Animation::InterpolationMode mode, const Model::Animation::template Keyframe<T> &k0,
+    const Model::Animation::template Keyframe<T> &k1, float t, T *result) -> void {
     const auto &v0 = k0.value;
     const auto &v1 = k1.value;
     const auto t0 = k0.time;
@@ -462,6 +502,7 @@ inline auto interpolate(
     case Model::Animation::InterpolationMode::eLinear:
         *result = glm::mix(v0, v1, _t);
         break;
+    case Model::Animation::InterpolationMode::eHermite:
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
         *result = v1;
@@ -469,7 +510,7 @@ inline auto interpolate(
     }
 }
 
-inline auto interpolate(
+inline auto Interpolate(
     Model::Animation::InterpolationMode mode, const KeyframeQuat &k0, const KeyframeQuat &k1, float t,
     glm::fquat *result) -> void {
     const auto &v0 = k0.value;
@@ -483,6 +524,7 @@ inline auto interpolate(
     case Model::Animation::InterpolationMode::eLinear:
         *result = glm::slerp(v0, v1, _t);
         break;
+    case Model::Animation::InterpolationMode::eHermite:
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
         *result = v1;
@@ -490,48 +532,64 @@ inline auto interpolate(
     }
 }
 
-auto Model::Controller::UpdateAnimationChannel(uint32_t channel_id, const TranslationChannel &channel) -> void {
-    UpdateAnimationChannel(
-        translation_data_, channel_id, channel,
-        [&](const KeyframeVec3 &k1, const KeyframeVec3 &k2, float t, Pose::Node &node) {
-        glm::fvec3 result = node.GetTranslation();
-        interpolate(channel.GetInterpolation(), k1, k2, t, &result);
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eTranslation>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec3 result = node->GetTranslation();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
 
-        node.SetTranslationSilent(result);
-    });
+    node->SetTranslationSilent(result);
 }
 
-auto Model::Controller::UpdateAnimationChannel(uint32_t channel_id, const RotationChhannel &channel) -> void {
-    UpdateAnimationChannel(
-        rotation_data_, channel_id, channel,
-        [&](const KeyframeQuat &k1, const KeyframeQuat &k2, float t, Pose::Node &node) {
-        glm::fquat result = node.GetRotation();
-        interpolate(channel.GetInterpolation(), k1, k2, t, &result);
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eRotation>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fquat result = node->GetRotation();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
 
-        node.SetRotationSilent(result);
-    });
+    node->SetRotationSilent(result);
 }
 
-auto Model::Controller::UpdateAnimationChannel(uint32_t channel_id, const ScaleChannel &channel) -> void {
-    UpdateAnimationChannel(
-        scale_data_, channel_id, channel,
-        [&](const KeyframeVec3 &k1, const KeyframeVec3 &k2, float t, Pose::Node &node) {
-        glm::fvec3 result = node.GetScale();
-        interpolate(channel.GetInterpolation(), k1, k2, t, &result);
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eScale>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec3 result = node->GetScale();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
 
-        node.SetScaleSilent(result);
-    });
+    node->SetScaleSilent(result);
+}
+
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eColor>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec4 result = node->GetColor();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
+
+    node->SetColor(result);
+}
+
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eUvOffset>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec2 result = node->GetUvOffset();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
+
+    node->SetUvOffset(result);
+}
+
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eUvScale>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec2 result = node->GetUvScale();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
+
+    node->SetUvScale(result);
 }
 
 auto Model::Controller::UpdateAnimation(const Animation &animation) -> void {
-    animation.IterateChannels<Animation::TargetProperty::eTranslation>(
-        [&](uint32_t channel_id, const TranslationChannel &channel) { UpdateAnimationChannel(channel_id, channel); });
-
-    animation.IterateChannels<Animation::TargetProperty::eRotation>(
-        [&](uint32_t channel_id, const RotationChhannel &channel) { UpdateAnimationChannel(channel_id, channel); });
-
-    animation.IterateChannels<Animation::TargetProperty::eScale>(
-        [&](uint32_t channel_id, const ScaleChannel &channel) { UpdateAnimationChannel(channel_id, channel); });
+    animation.IterateNodeChannels([&](uint32_t channel_id, const Animation::AnyNodeChannel &channel) -> void {
+        channel.Apply(time_, *pose_.get(), node_channel_data_[channel_id]);
+    });
 
     pose_->RecomputeTransformSubtree(pose_->GetRoot());
 }

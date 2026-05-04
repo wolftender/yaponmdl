@@ -118,12 +118,12 @@ auto ConvertGMOInterpolation(gmo::GmoFCurveInterpolation interpolation) -> rende
     }
 }
 
-template <render::Model::Animation::TargetProperty Prop>
+template <render::Model::Animation::NodeTargetProperty Prop>
 auto ConvertGMOKeyframes(
-    render::Model::Animation::Channel<Prop> &channel, const gmo::GmoMotion &gmo_motion,
+    render::Model::Animation::NodeChannel<Prop> &channel, const gmo::GmoMotion &gmo_motion,
     const gmo::GmoAnimation &gmo_animation) -> void {
-    using DataType = render::Model::Animation::Channel<Prop>::PropertyType;
-    using KeyframeType = render::Model::Animation::Channel<Prop>::KeyframeType;
+    using DataType = render::Model::Animation::NodeChannel<Prop>::PropertyType;
+    using KeyframeType = render::Model::Animation::NodeChannel<Prop>::KeyframeType;
 
     constexpr uint32_t kNumDimensions = DataType::length();
     // constexpr std::array<uint32_t, 5> kElementsPerInterpType = {1, 1, 3, 5, 1};
@@ -405,6 +405,8 @@ auto ConvertGMO(
                 throw std::runtime_error{"libconv: material animations are not supported"};
             }
 
+            using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
+
             switch (gmo_animation.property) {
             case gmo::eAnimBoneTranslate: {
                 if (gmo_animation.target_id >= node_map.size()) {
@@ -424,10 +426,12 @@ auto ConvertGMO(
                     continue;
                 }
 
-                render::Model::Animation::TranslationChannel channel{node_id.value()};
-                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+                animation.AppendNodeChannel<NodeTargetProperty::eTranslation>(
+                    node_id.value(), [&](auto &translation_channel) {
+                    ConvertGMOKeyframes<NodeTargetProperty::eTranslation>(
+                        translation_channel, gmo_motion, gmo_animation);
+                });
 
-                animation.AppendChannel(std::move(channel));
                 break;
             }
             case gmo::eAnimBoneScale2: {
@@ -448,10 +452,10 @@ auto ConvertGMO(
                     continue;
                 }
 
-                render::Model::Animation::ScaleChannel channel{node_id.value()};
-                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+                animation.AppendNodeChannel<NodeTargetProperty::eScale>(node_id.value(), [&](auto &scale_channel) {
+                    ConvertGMOKeyframes<NodeTargetProperty::eScale>(scale_channel, gmo_motion, gmo_animation);
+                });
 
-                animation.AppendChannel(std::move(channel));
                 break;
             }
             case gmo::eAnimBoneRotateQ: {
@@ -472,10 +476,11 @@ auto ConvertGMO(
                     continue;
                 }
 
-                render::Model::Animation::RotationChannel channel{node_id.value()};
-                ConvertGMOKeyframes(channel, gmo_motion, gmo_animation);
+                animation.AppendNodeChannel<NodeTargetProperty::eRotation>(
+                    node_id.value(), [&](auto &rotation_channel) {
+                    ConvertGMOKeyframes<NodeTargetProperty::eRotation>(rotation_channel, gmo_motion, gmo_animation);
+                });
 
-                animation.AppendChannel(std::move(channel));
                 break;
             }
             case gmo::eAnimPataponTextureEXT: {
@@ -892,6 +897,8 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
         }
     }
 
+    using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
+
     // loading animations
     for (uint32_t act_anim_id = 0; act_anim_id < act_model.animations.size(); ++act_anim_id) {
         const auto &act_anim = act_model.animations[act_anim_id];
@@ -907,19 +914,18 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                 }
 
                 const auto node_id = node_map[act_channel.node_id].value();
-                render::Model::Animation::TranslationChannel channel{node_id};
 
-                channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+                animation.AppendNodeChannel<NodeTargetProperty::eTranslation>(node_id, [&](auto &translation_channel) {
+                    translation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
 
-                for (const auto &act_keyframe : act_channel.keyframes) {
-                    channel.GetKeyframes().emplace_back(
-                        render::Model::Animation::TranslationChannel::KeyframeType{
-                            .value = act_keyframe.value,
-                            .time = act_keyframe.time,
-                        });
-                }
-
-                animation.AppendChannel(std::move(channel));
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        translation_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeTranslationChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
             },
                     [&](const act::Model::RotationAnimationChannel &act_channel) {
                 if (!node_map[act_channel.node_id].has_value()) {
@@ -927,19 +933,18 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                 }
 
                 const auto node_id = node_map[act_channel.node_id].value();
-                render::Model::Animation::RotationChannel channel{node_id};
 
-                channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+                animation.AppendNodeChannel<NodeTargetProperty::eRotation>(node_id, [&](auto &rotation_channel) {
+                    rotation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
 
-                for (const auto &act_keyframe : act_channel.keyframes) {
-                    channel.GetKeyframes().emplace_back(
-                        render::Model::Animation::RotationChannel::KeyframeType{
-                            .value = act_keyframe.value,
-                            .time = act_keyframe.time,
-                        });
-                }
-
-                animation.AppendChannel(std::move(channel));
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        rotation_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeRotationChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
             },
                     [&](const act::Model::ScaleAnimationChannel &act_channel) {
                 if (!node_map[act_channel.node_id].has_value()) {
@@ -947,19 +952,18 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                 }
 
                 const auto node_id = node_map[act_channel.node_id].value();
-                render::Model::Animation::ScaleChannel channel{node_id};
 
-                channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+                animation.AppendNodeChannel<NodeTargetProperty::eScale>(node_id, [&](auto &scale_channel) {
+                    scale_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
 
-                for (const auto &act_keyframe : act_channel.keyframes) {
-                    channel.GetKeyframes().emplace_back(
-                        render::Model::Animation::ScaleChannel::KeyframeType{
-                            .value = act_keyframe.value,
-                            .time = act_keyframe.time,
-                        });
-                }
-
-                animation.AppendChannel(std::move(channel));
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        scale_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeScaleChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
             },
                 },
                 act_channel);
