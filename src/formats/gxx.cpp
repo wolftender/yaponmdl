@@ -77,6 +77,39 @@ auto AssertReadStringAt(util::bytes::BinaryReader &reader, uint64_t offset) -> s
     return buffer.value();
 }
 
+template <typename T>
+auto AssertReadAligned(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
+    const auto value = reader.ReadAligned<T>();
+    if (!value.has_value()) {
+        if (message.has_value()) {
+            throw GxxParseError{std::string{message.value()}};
+        } else {
+            throw GxxParseError{fmt::format("invalid byte read at position {}", reader.Position())};
+        }
+    }
+
+    return value.value();
+}
+
+template <uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<float>(reader));
+    }
+
+    return val;
+};
+
+template <typename T, uint32_t D> auto AssertReadAlignedFVecN(util::bytes::BinaryReader &reader) -> glm::vec<D, float> {
+    constexpr float kRange = static_cast<float>(std::numeric_limits<T>::max());
+    glm::vec<D, float> val;
+    for (uint32_t i = 0; i < D; ++i) {
+        val[i] = static_cast<float>(AssertReadAligned<T>(reader)) / kRange;
+    }
+
+    return val;
+};
+
 auto ReadHeader(util::bytes::BinaryReader &reader) -> GxxHeader {
     GxxHeader header;
     header.magic = AssertRead<uint32_t>(reader);
@@ -153,6 +186,9 @@ public:
 
             gxx_model.textures.emplace_back(
                 GxxTexture{texture_id, std::string{texture_name_buffer.begin(), texture_name_buffer.end()}});
+
+            const auto id = static_cast<uint32_t>(gxx_model.textures.size() - 1);
+            texture_cache_.emplace(std::make_pair(texture_id, id));
         }
 
         for (uint32_t gxx_bone_id = 0; gxx_bone_id < num_bones; ++gxx_bone_id) {
@@ -178,8 +214,6 @@ public:
             animation.frameloop = anim_frameloop;
             animation.framerate = anim_framerate;
 
-            gxx_model.animations.emplace_back(std::move(animation));
-
             for (uint32_t gxx_frame_id = 0; gxx_frame_id < animation.num_frames; ++gxx_frame_id) {
                 const auto anim_frame_offset = AssertReadAt<uint32_t>(reader, anim_data_offset + (0x04 * gxx_frame_id));
                 const auto end_counter = anim_frame_offset + anim_data_size;
@@ -188,13 +222,29 @@ public:
 
                 logger_.log(
                     fmt::format("BEGIN FRAME: anim {} frame {} end {:#010x}", gxx_anim_id, gxx_frame_id, end_counter));
+
+                GxxAnimationFrame frame;
+
                 while (ge_state_.program_counter < end_counter) {
-                    const auto res = ParseAnimCommand(gxx_model, animation, reader);
+                    const auto res = ParseAnimCommand(gxx_model, frame, reader);
                     if (res == ParseCommandResult::eComplete) {
                         break;
                     }
                 }
+
+                if (frame.list.empty()) {
+                    logger_.log(
+                        fmt::format("warning: anim {} frame {} has no drawlists submitted", gxx_anim_id, gxx_frame_id));
+                }
+
+                // all commands were parsed, now we can combine them into a "frame"
+                animation.frames.emplace_back(std::move(frame));
+
+                // reset ge state
+                ge_state_ = GEState{};
             }
+
+            gxx_model.animations.emplace_back(std::move(animation));
         }
 
         return gxx_model;
@@ -215,7 +265,7 @@ private:
     /// handy reference list for this funtion:
     /// - https://www.psdevwiki.com/psp/Graphics_Engine
     /// -
-    auto ParseAnimCommand(GxxModel &gxx_model, GxxAnimation &gxx_animation, util::bytes::BinaryReader &reader)
+    auto ParseAnimCommand(GxxModel &gxx_model, GxxAnimationFrame &frame, util::bytes::BinaryReader &reader)
         -> ParseCommandResult {
         const auto command = AssertReadAt<uint32_t>(reader, ge_state_.program_counter);
         const uint32_t ge_command = (0xff000000u & command) >> 24;
@@ -232,6 +282,12 @@ private:
 
             ge_state_.callstack.push(ge_state_.program_counter + sizeof(uint32_t));
             ge_state_.program_counter = jump_address;
+
+            const auto tex_iter = texture_cache_.find(jump_address);
+            if (tex_iter != texture_cache_.end()) {
+                ge_state_.texture = tex_iter->second;
+            }
+
             return ParseCommandResult::eContinue; // don't increase PC after jump
         }
 
@@ -352,7 +408,70 @@ private:
             break;
         }
 
+        case pspgu::SceGeCommand::IADDR: {
+            throw GxxParseError{"indexed primitives are currently unsupported"};
+        }
+
         case pspgu::SceGeCommand::PRIM: {
+            const auto mesh_uid = command;
+            const auto iter = mesh_cache_.find(mesh_uid);
+
+            // this mesh is not initialized yet
+            if (mesh_cache_.end() == iter) {
+                const auto num_vertices = command & 0x0000ffff;
+                const auto primitive_type_raw = uint32_t{(command >> 16) & 0b0111};
+
+                const auto primitive_type = (primitive_type_raw < eGxxPrimitiveCount)
+                                                ? static_cast<GxxPrimitiveType>(primitive_type_raw)
+                                                : eGxxPrimitiveTriangleStrip;
+
+                if (ge_state_.vtx_buffer_addr == 0u) {
+                    throw GxxParseError{"no vertex buffer pointer specifier"};
+                }
+
+                GxxMesh mesh;
+                mesh.id = mesh_uid;
+                mesh.primitive_type = primitive_type;
+
+                if (ge_state_.idx_buffer_addr == 0) {
+                    mesh.indices.reserve(num_vertices);
+
+                    for (uint32_t vert_idx = 0; vert_idx < num_vertices; ++vert_idx) {
+                        mesh.indices.emplace_back(vert_idx);
+                    }
+                }
+
+                AssertSeek(reader, ge_state_.vtx_buffer_addr);
+                mesh.vertices = ReadAlignedVertexBuffer(reader, num_vertices);
+
+                gxx_model.meshes.emplace_back(std::move(mesh));
+
+                const auto mesh_id = static_cast<uint32_t>(gxx_model.meshes.size() - 1);
+
+                mesh_cache_.emplace(std::make_pair(mesh_uid, mesh_id));
+                ge_state_.mesh.emplace(mesh_id);
+            } else {
+                ge_state_.mesh.emplace(iter->second);
+            }
+
+            // build a drawlist
+            GxxDrawlist drawlist;
+            drawlist.mesh = ge_state_.mesh;
+            drawlist.albedo_color = ge_state_.albedo_color;
+
+            if (ge_state_.enable_texture_map) {
+                if (ge_state_.texture.has_value()) {
+                    drawlist.texture = ge_state_.texture.value();
+                } else {
+                    logger_.log(fmt::format("warning: anim frame enables texture map but sets none"));
+                }
+            }
+
+            drawlist.world_matrix = ge_state_.world_matrix;
+            drawlist.uv_offset = ge_state_.uv_offset;
+            drawlist.uv_scale = ge_state_.uv_scale;
+            frame.list.emplace_back(std::move(drawlist));
+
             break;
         }
 
@@ -391,10 +510,158 @@ private:
         return ParseCommandResult::eContinue;
     }
 
+    auto ReadAlignedVertexBuffer(util::bytes::BinaryReader &reader, uint32_t num_vertices) -> std::vector<GxxVertex> {
+        constexpr std::array<uint32_t, 8> kAligns = {0, 0, 1, 3, 1, 1, 1, 3};
+        logger_.log(
+            fmt::format(
+                "load vertex array:\n"
+                "\tfmt_texture:\t\t{}\n"
+                "\tfmt_color:\t\t{}\n"
+                "\tfmt_normal:\t\t{}\n"
+                "\tfmt_vertex:\t\t{}\n"
+                "\tfmt_weight:\t\t{}\n"
+                "\tfmt_index:\t\t{}\n"
+                "\tnum_weights:\t\t{}\n"
+                "\tnum_morphs:\t\t{}",
+                pspgu::ToString(ge_state_.format_texture), pspgu::ToString(ge_state_.format_color),
+                pspgu::ToString(ge_state_.format_normal), pspgu::ToString(ge_state_.format_position),
+                pspgu::ToString(ge_state_.format_weight), pspgu::ToString(ge_state_.format_index),
+                ge_state_.num_weights, ge_state_.num_morphs));
+
+        using Reader = util::bytes::BinaryReader;
+        const auto fnReadUv = [&]() -> glm::fvec2 (*)(Reader &) {
+            switch (ge_state_.format_texture) {
+            case pspgu::eSceGuFmtTextureNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec2{0.0f, 0.0f}; };
+            case pspgu::eSceGuFmtTextureUBYTE:
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint8_t, 2>(r); };
+            case pspgu::eSceGuFmtTextureUSHORT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<uint16_t, 2>(r); };
+            case pspgu::eSceGuFmtTextureFLOAT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<2>(r); };
+            default:
+                throw GxxParseError{
+                    fmt::format("unsupported texture uv format {}", static_cast<uint32_t>(ge_state_.format_texture))};
+            }
+        }();
+
+        const auto fnReadColor = [&]() -> glm::fvec4 (*)(Reader &) {
+            switch (ge_state_.format_color) {
+            case pspgu::eSceGuFmtColorNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f}; };
+            case pspgu::eSceGuFmtColorPF5650:
+                return [](Reader &r) {
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
+                    return pspgu::ColorPF5650ToRGBA8(rgba);
+                };
+            case pspgu::eSceGuFmtColorPF5551:
+                return [](Reader &r) {
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
+                    return pspgu::ColorPF5551ToRGBA8(rgba);
+                };
+            case pspgu::eSceGuFmtColorPF4444:
+                return [](Reader &r) {
+                    const auto rgba = AssertReadAligned<uint16_t>(r);
+                    return pspgu::ColorPF4444ToRGBA8(rgba);
+                };
+            case pspgu::eSceGuFmtColorPF8888:
+                return [](Reader &r) {
+                    const auto rgba = AssertReadAligned<uint32_t>(r);
+                    return pspgu::ColorPF8888ToRGBA8(rgba);
+                };
+            default:
+                throw GxxParseError{
+                    fmt::format("unsupported vertex color format {}", static_cast<uint32_t>(ge_state_.format_color))};
+            }
+        }();
+
+        const auto fnReadNormal = [&]() -> glm::fvec3 (*)(Reader &) {
+            switch (ge_state_.format_normal) {
+            case pspgu::eSceGuFmtNormalNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
+            case pspgu::eSceGuFmtNormalBYTE:
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
+            case pspgu::eSceGuFmtNormalSHORT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
+            case pspgu::eSceGuFmtNormalFLOAT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
+            default:
+                throw GxxParseError{
+                    fmt::format("unsupported vertex normal format {}", static_cast<uint32_t>(ge_state_.format_normal))};
+            }
+        }();
+
+        const auto fnReadPosition = [&]() -> glm::fvec3 (*)(Reader &) {
+            switch (ge_state_.format_position) {
+            case pspgu::eSceGuFmtVertexNONE:
+                return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
+            case pspgu::eSceGuFmtVertexBYTE:
+                return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
+            case pspgu::eSceGuFmtVertexSHORT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
+            case pspgu::eSceGuFmtVertexFLOAT:
+                return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
+            default:
+                throw GxxParseError{fmt::format(
+                    "unsupported vertex position format {}", static_cast<uint32_t>(ge_state_.format_position))};
+            }
+        }();
+
+        const auto fnReadWeight = [&]() -> float (*)(Reader &) {
+            switch (ge_state_.format_weight) {
+            case pspgu::eSceGuFmtWeightNONE:
+                return []([[maybe_unused]] Reader &r) { return 0.0f; };
+            case pspgu::eSceGuFmtWeightUBYTE:
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint8_t>(r)) / 255.0f;
+                };
+            case pspgu::eSceGuFmtWeightUSHORT:
+                return []([[maybe_unused]] Reader &r) {
+                    return static_cast<float>(AssertReadAligned<uint16_t>(r)) / 65535.0f;
+                };
+            case pspgu::eSceGuFmtWeightFLOAT:
+                return []([[maybe_unused]] Reader &r) { return AssertReadAligned<float>(r); };
+            default:
+                throw GxxParseError{
+                    fmt::format("unsupported vertex weight format {}", static_cast<uint32_t>(ge_state_.format_weight))};
+            }
+        }();
+
+        const uint32_t align = kAligns[ge_state_.format_texture] | kAligns[ge_state_.format_color] |
+                               kAligns[ge_state_.format_normal] | kAligns[ge_state_.format_position] |
+                               kAligns[ge_state_.format_weight];
+
+        std::vector<GxxVertex> vertices;
+        vertices.reserve(num_vertices);
+        for (uint32_t i = 0; i < num_vertices; ++i) {
+            GxxVertex vertex;
+
+            for (uint32_t w = 0; w < ge_state_.num_weights; ++w) {
+                vertex.weights[w] = fnReadWeight(reader);
+            }
+
+            vertex.uv = fnReadUv(reader);
+            vertex.color = fnReadColor(reader);
+            vertex.normal = fnReadNormal(reader);
+            vertex.position = fnReadPosition(reader);
+
+            vertices.emplace_back(vertex);
+
+            const auto position = reader.Position();
+            const auto aligned_position = (position + align) & ~align;
+            if (aligned_position > position) {
+                (void)reader.ReadBuffer(aligned_position - position);
+            }
+        }
+
+        return vertices;
+    }
+
     const GxxLogger &logger_;
 
     std::span<const uint8_t> buffer_;
     std::map<uint32_t, uint32_t> mesh_cache_;
+    std::map<uint32_t, uint32_t> texture_cache_;
 
     // ge state
     struct GEState {
@@ -405,6 +672,7 @@ private:
         pspgu::SceGuFmtWeight format_weight = pspgu::eSceGuFmtWeightNONE;
         pspgu::SceGuFmtIndex format_index = pspgu::eSceGuFmtIndexNONE;
         uint32_t num_weights = 0;
+        uint32_t num_morphs = 0;
 
         glm::fmat4x4 world_matrix = glm::fmat4x4{1.0f};
         std::array<glm::fmat4x4, 8> bone_matrix = {
@@ -412,8 +680,11 @@ private:
             glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f},
         };
 
+        std::optional<uint32_t> mesh = std::nullopt;
+        std::optional<uint32_t> texture = std::nullopt;
+
         uint32_t vtx_buffer_addr = 0;
-        uint32_t current_texture = 0;
+        uint32_t idx_buffer_addr = 0;
 
         bool enable_texture_map = false;
 
