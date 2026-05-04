@@ -113,6 +113,7 @@ auto ConvertGMOInterpolation(gmo::GmoFCurveInterpolation interpolation) -> rende
     case gmo::GmoFCurveInterpolation::eLinear:
         return render::Model::Animation::InterpolationMode::eLinear;
     case gmo::GmoFCurveInterpolation::eHermite:
+        return render::Model::Animation::InterpolationMode::eHermite;
     case gmo::GmoFCurveInterpolation::eCubic:
         return render::Model::Animation::InterpolationMode::eStep;
     }
@@ -138,17 +139,58 @@ auto ConvertGMOKeyframes(
     channel.SetInterpolation(ConvertGMOInterpolation(gmo_fcurve.interpolation));
     const auto fps = static_cast<float>(gmo_motion.framerate);
 
-    for (uint32_t keyframe_idx = 0; keyframe_idx < gmo_fcurve.num_keyframes; ++keyframe_idx) {
-        const auto base_idx = num_dims_per_keyframe * keyframe_idx;
+    switch (gmo_fcurve.interpolation) {
+    case gmo::GmoFCurveInterpolation::eConstant:
+    case gmo::GmoFCurveInterpolation::eLinear:
+    case gmo::GmoFCurveInterpolation::eSpherical:
+        for (uint32_t keyframe_idx = 0; keyframe_idx < gmo_fcurve.num_keyframes; ++keyframe_idx) {
+            const auto base_idx = num_dims_per_keyframe * keyframe_idx;
 
-        KeyframeType keyframe;
-        keyframe.time = gmo_fcurve.raw_data[base_idx] / fps;
+            KeyframeType keyframe;
+            keyframe.time = gmo_fcurve.raw_data[base_idx] / fps;
 
-        for (uint32_t d = 0; d < kNumDimensions; ++d) {
-            keyframe.value[d] = gmo_fcurve.raw_data[base_idx + 1 + d];
+            for (uint32_t d = 0; d < kNumDimensions; ++d) {
+                keyframe.value[d] = gmo_fcurve.raw_data[base_idx + 1 + d];
+            }
+
+            channel.GetKeyframes().emplace_back(std::move(keyframe));
         }
 
-        channel.GetKeyframes().emplace_back(std::move(keyframe));
+        break;
+
+    case gmo::GmoFCurveInterpolation::eHermite:
+        for (uint32_t keyframe_idx = 0; keyframe_idx < gmo_fcurve.num_keyframes; ++keyframe_idx) {
+            const auto base_idx = num_dims_per_keyframe * keyframe_idx;
+
+            KeyframeType keyframe;
+            keyframe.time = gmo_fcurve.raw_data[base_idx] / fps;
+
+            for (uint32_t d = 0; d < kNumDimensions; ++d) {
+                keyframe.value[d] = gmo_fcurve.raw_data[base_idx + (3 * d) + 1];
+                keyframe.in_dy[d] = gmo_fcurve.raw_data[base_idx + (3 * d) + 2];
+                keyframe.out_dy[d] = gmo_fcurve.raw_data[base_idx + (3 * d) + 3];
+            }
+
+            channel.GetKeyframes().emplace_back(std::move(keyframe));
+        }
+
+        break;
+
+    case gmo::GmoFCurveInterpolation::eCubic:
+        for (uint32_t keyframe_idx = 0; keyframe_idx < gmo_fcurve.num_keyframes; ++keyframe_idx) {
+            const auto base_idx = num_dims_per_keyframe * keyframe_idx;
+
+            KeyframeType keyframe;
+            keyframe.time = gmo_fcurve.raw_data[base_idx] / fps;
+
+            for (uint32_t d = 0; d < kNumDimensions; ++d) {
+                keyframe.value[d] = gmo_fcurve.raw_data[base_idx + (5 * d) + 1];
+            }
+
+            channel.GetKeyframes().emplace_back(std::move(keyframe));
+        }
+
+        break;
     }
 }
 

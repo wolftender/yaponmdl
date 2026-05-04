@@ -143,6 +143,7 @@ else()
         -Wall 
         -Wextra 
         -Wpedantic
+        -Wno-missing-designated-field-initializers
     )
     target_compile_options(thirdparty PRIVATE -w)
 endif()

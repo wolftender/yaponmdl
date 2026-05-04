@@ -3,7 +3,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include <variant>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -394,6 +393,9 @@ public:
         template <AnimationPropertyType T> struct Keyframe final {
             T value;
             float time;
+
+            T in_dx, in_dy;
+            T out_dx, out_dy;
         };
 
         class AnyNodeChannel {

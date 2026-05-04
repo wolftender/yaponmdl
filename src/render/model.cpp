@@ -1,5 +1,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/spline.hpp>
 
 #include "render/model.hpp"
 
@@ -502,7 +503,13 @@ inline auto Interpolate(
     case Model::Animation::InterpolationMode::eLinear:
         *result = glm::mix(v0, v1, _t);
         break;
-    case Model::Animation::InterpolationMode::eHermite:
+    case Model::Animation::InterpolationMode::eHermite: {
+        const auto &m0 = k0.out_dy; // tangents
+        const auto &m1 = k1.in_dy;
+
+        *result = glm::hermite(v0, l * m0, v1, l * m1, _t);
+        break;
+    }
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
         *result = v1;
@@ -524,7 +531,13 @@ inline auto Interpolate(
     case Model::Animation::InterpolationMode::eLinear:
         *result = glm::slerp(v0, v1, _t);
         break;
-    case Model::Animation::InterpolationMode::eHermite:
+    case Model::Animation::InterpolationMode::eHermite: {
+        const auto &m0 = k0.out_dy; // tangents
+        const auto &m1 = k1.in_dy;
+
+        *result = glm::hermite(v0, l * m0, v1, l * m1, _t);
+        break;
+    }
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
         *result = v1;
