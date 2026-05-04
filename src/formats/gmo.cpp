@@ -4,6 +4,7 @@
 
 #include "formats/gmo.hpp"
 #include "formats/gmodef.hpp"
+#include "formats/pspgu.hpp"
 
 #include "common/binaryreader.hpp"
 
@@ -187,181 +188,6 @@ inline auto GetChunkNameSize(const GmoChunk &chunk) -> uint32_t {
     }
 
     return chunk.args_offset - 16;
-}
-
-// clang-format off
-enum SceGuFmtTexture {
-    eSceGuFmtTextureNONE    = 0,
-    eSceGuFmtTextureUBYTE   = 1,
-    eSceGuFmtTextureUSHORT  = 2,
-    eSceGuFmtTextureFLOAT   = 3,
-};
-
-enum SceGuFmtColor {
-    eSceGuFmtColorNONE      = 0,
-    eSceGuFmtColorPF5650    = 4,
-    eSceGuFmtColorPF5551    = 5,
-    eSceGuFmtColorPF4444    = 6,
-    eSceGuFmtColorPF8888    = 7
-};
-
-enum SceGuFmtNormal {
-    eSceGuFmtNormalNONE     = 0,
-    eSceGuFmtNormalBYTE     = 1,
-    eSceGuFmtNormalSHORT    = 2,
-    eSceGuFmtNormalFLOAT    = 3,
-};
-
-enum SceGuFmtVertex {
-    eSceGuFmtVertexNONE     = 0,
-    eSceGuFmtVertexBYTE     = 1,
-    eSceGuFmtVertexSHORT    = 2,
-    eSceGuFmtVertexFLOAT    = 3,
-};
-
-enum SceGuFmtWeight {
-    eSceGuFmtWeightNONE     = 0,
-    eSceGuFmtWeightUBYTE    = 1,
-    eSceGuFmtWeightUSHORT   = 2,
-    eSceGuFmtWeightFLOAT    = 3,
-};
-
-enum SceGuFmtIndex {
-    eSceGuFmtIndexNONE      = 0,
-    eSceGuFmtIndexUBYTE     = 1,
-    eSceGuFmtIndexUSHORT    = 2,
-};
-// clang-format on
-
-constexpr auto ToString(SceGuFmtTexture v) -> const char * {
-    switch (v) {
-    case eSceGuFmtTextureNONE:
-        return "NONE";
-    case eSceGuFmtTextureUBYTE:
-        return "UBYTE";
-    case eSceGuFmtTextureUSHORT:
-        return "USHORT";
-    case eSceGuFmtTextureFLOAT:
-        return "FLOAT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-constexpr auto ToString(SceGuFmtColor v) -> const char * {
-    switch (v) {
-    case eSceGuFmtColorNONE:
-        return "NONE";
-    case eSceGuFmtColorPF5650:
-        return "PF5650";
-    case eSceGuFmtColorPF5551:
-        return "PF5551";
-    case eSceGuFmtColorPF4444:
-        return "PF4444";
-    case eSceGuFmtColorPF8888:
-        return "PF8888";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-constexpr auto ToString(SceGuFmtNormal v) -> const char * {
-    switch (v) {
-    case eSceGuFmtNormalNONE:
-        return "NONE";
-    case eSceGuFmtNormalBYTE:
-        return "BYTE";
-    case eSceGuFmtNormalSHORT:
-        return "SHORT";
-    case eSceGuFmtNormalFLOAT:
-        return "FLOAT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-constexpr auto ToString(SceGuFmtVertex v) -> const char * {
-    switch (v) {
-    case eSceGuFmtVertexNONE:
-        return "NONE";
-    case eSceGuFmtVertexBYTE:
-        return "BYTE";
-    case eSceGuFmtVertexSHORT:
-        return "SHORT";
-    case eSceGuFmtVertexFLOAT:
-        return "FLOAT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-constexpr auto ToString(SceGuFmtWeight v) -> const char * {
-    switch (v) {
-    case eSceGuFmtWeightNONE:
-        return "NONE";
-    case eSceGuFmtWeightUBYTE:
-        return "UBYTE";
-    case eSceGuFmtWeightUSHORT:
-        return "USHORT";
-    case eSceGuFmtWeightFLOAT:
-        return "FLOAT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-constexpr auto ToString(SceGuFmtIndex v) -> const char * {
-    switch (v) {
-    case eSceGuFmtIndexNONE:
-        return "NONE";
-    case eSceGuFmtIndexUBYTE:
-        return "UBYTE";
-    case eSceGuFmtIndexUSHORT:
-        return "USHORT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
-inline auto ColorPF5650ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b0000000000011111} & color;
-    const auto g = (uint16_t{0b0000011111100000} & color) >> 5;
-    const auto b = (uint16_t{0b1111100000000000} & color) >> 11;
-
-    return {static_cast<float>(r) / 31.0f, static_cast<float>(g) / 63.0f, static_cast<float>(b) / 31.0f, 1.0f};
-}
-
-inline auto ColorPF5551ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0b0000000000011111} & color;
-    const auto g = (uint16_t{0b0000001111100000} & color) >> 5;
-    const auto b = (uint16_t{0b0111110000000000} & color) >> 10;
-    const auto a = (uint16_t{0b1000000000000000} & color) >> 15;
-
-    return {
-        static_cast<float>(r) / 31.0f, static_cast<float>(g) / 31.0f, static_cast<float>(b) / 31.0f,
-        static_cast<float>(a)};
-}
-
-inline auto ColorPF4444ToRGBA8(uint16_t color) -> glm::fvec4 {
-    const auto r = uint16_t{0x000f} & color;
-    const auto g = (uint16_t{0x00f0} & color) >> 4;
-    const auto b = (uint16_t{0x0f00} & color) >> 8;
-    const auto a = (uint16_t{0xf000} & color) >> 12;
-
-    return {
-        static_cast<float>(r) / 15.0f, static_cast<float>(g) / 15.0f, static_cast<float>(b) / 15.0f,
-        static_cast<float>(a) / 15.0f};
-}
-
-inline auto ColorPF8888ToRGBA8(uint32_t color) -> glm::fvec4 {
-    const auto r = 0x000000ff & color;
-    const auto g = (0x0000ff00 & color) >> 8;
-    const auto b = (0x00ff0000 & color) >> 16;
-    const auto a = (0xff000000 & color) >> 24;
-
-    return {
-        static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f,
-        static_cast<float>(a) / 255.0f};
 }
 
 inline auto RefType(uint32_t ref) { return (0x7fff & ((ref) >> 16)); }
@@ -824,23 +650,23 @@ private:
         auto num_morphs   = 0b1111 & (native_format >> 18);
         // clang-format on
 
-        if (fmt_texture != eSceGuFmtTextureNONE) {
+        if (fmt_texture != pspgu::eSceGuFmtTextureNONE) {
             array.flags = array.flags | GmoVertexArrayFlags::eHasUvs;
         }
 
-        if (fmt_color != eSceGuFmtColorNONE) {
+        if (fmt_color != pspgu::eSceGuFmtColorNONE) {
             array.flags = array.flags | GmoVertexArrayFlags::eHasColor;
         }
 
-        if (fmt_normal != eSceGuFmtNormalNONE) {
+        if (fmt_normal != pspgu::eSceGuFmtNormalNONE) {
             array.flags = array.flags | GmoVertexArrayFlags::eHasNormals;
         }
 
-        if (fmt_vertex != eSceGuFmtVertexNONE) {
+        if (fmt_vertex != pspgu::eSceGuFmtVertexNONE) {
             array.flags = array.flags | GmoVertexArrayFlags::eHasPositions;
         }
 
-        if (fmt_weight != eSceGuFmtWeightNONE) {
+        if (fmt_weight != pspgu::eSceGuFmtWeightNONE) {
             array.flags = array.flags | GmoVertexArrayFlags::eHasWeights;
             num_weights = num_weights + 1;
         } else {
@@ -860,10 +686,12 @@ private:
             "\tfmt_index:\t\t{}\n"
             "\tnum_weights:\t\t{}\n"
             "\tnum_morphs:\t\t{}",
-            ToString(static_cast<SceGuFmtTexture>(fmt_texture)), ToString(static_cast<SceGuFmtColor>(fmt_color)),
-            ToString(static_cast<SceGuFmtNormal>(fmt_normal)), ToString(static_cast<SceGuFmtVertex>(fmt_vertex)),
-            ToString(static_cast<SceGuFmtWeight>(fmt_weight)), ToString(static_cast<SceGuFmtIndex>(fmt_index)),
-            num_weights, num_morphs);
+            pspgu::ToString(static_cast<pspgu::SceGuFmtTexture>(fmt_texture)),
+            pspgu::ToString(static_cast<pspgu::SceGuFmtColor>(fmt_color)),
+            pspgu::ToString(static_cast<pspgu::SceGuFmtNormal>(fmt_normal)),
+            pspgu::ToString(static_cast<pspgu::SceGuFmtVertex>(fmt_vertex)),
+            pspgu::ToString(static_cast<pspgu::SceGuFmtWeight>(fmt_weight)),
+            pspgu::ToString(static_cast<pspgu::SceGuFmtIndex>(fmt_index)), num_weights, num_morphs);
 
         if (num_weights > 8) {
             throw std::runtime_error{
@@ -873,13 +701,13 @@ private:
         using Reader = util::bytes::BinaryReader;
         const auto fnReadUv = [&]() -> glm::fvec2 (*)(Reader &) {
             switch (fmt_texture) {
-            case eSceGuFmtTextureNONE:
+            case pspgu::eSceGuFmtTextureNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec2{0.0f, 0.0f}; };
-            case eSceGuFmtTextureUBYTE:
+            case pspgu::eSceGuFmtTextureUBYTE:
                 return [](Reader &r) { return AssertReadAlignedFVecN<uint8_t, 2>(r); };
-            case eSceGuFmtTextureUSHORT:
+            case pspgu::eSceGuFmtTextureUSHORT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<uint16_t, 2>(r); };
-            case eSceGuFmtTextureFLOAT:
+            case pspgu::eSceGuFmtTextureFLOAT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<2>(r); };
             default:
                 throw GmoParseError{
@@ -889,27 +717,27 @@ private:
 
         const auto fnReadColor = [&]() -> glm::fvec4 (*)(Reader &) {
             switch (fmt_color) {
-            case eSceGuFmtColorNONE:
+            case pspgu::eSceGuFmtColorNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f}; };
-            case eSceGuFmtColorPF5650:
+            case pspgu::eSceGuFmtColorPF5650:
                 return [](Reader &r) {
                     const auto rgba = AssertReadAligned<uint16_t>(r);
-                    return ColorPF5650ToRGBA8(rgba);
+                    return pspgu::ColorPF5650ToRGBA8(rgba);
                 };
-            case eSceGuFmtColorPF5551:
+            case pspgu::eSceGuFmtColorPF5551:
                 return [](Reader &r) {
                     const auto rgba = AssertReadAligned<uint16_t>(r);
-                    return ColorPF5551ToRGBA8(rgba);
+                    return pspgu::ColorPF5551ToRGBA8(rgba);
                 };
-            case eSceGuFmtColorPF4444:
+            case pspgu::eSceGuFmtColorPF4444:
                 return [](Reader &r) {
                     const auto rgba = AssertReadAligned<uint16_t>(r);
-                    return ColorPF4444ToRGBA8(rgba);
+                    return pspgu::ColorPF4444ToRGBA8(rgba);
                 };
-            case eSceGuFmtColorPF8888:
+            case pspgu::eSceGuFmtColorPF8888:
                 return [](Reader &r) {
                     const auto rgba = AssertReadAligned<uint32_t>(r);
-                    return ColorPF8888ToRGBA8(rgba);
+                    return pspgu::ColorPF8888ToRGBA8(rgba);
                 };
             default:
                 throw GmoParseError{
@@ -919,13 +747,13 @@ private:
 
         const auto fnReadNormal = [&]() -> glm::fvec3 (*)(Reader &) {
             switch (fmt_normal) {
-            case eSceGuFmtNormalNONE:
+            case pspgu::eSceGuFmtNormalNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
-            case eSceGuFmtNormalBYTE:
+            case pspgu::eSceGuFmtNormalBYTE:
                 return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
-            case eSceGuFmtNormalSHORT:
+            case pspgu::eSceGuFmtNormalSHORT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
-            case eSceGuFmtNormalFLOAT:
+            case pspgu::eSceGuFmtNormalFLOAT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
@@ -935,13 +763,13 @@ private:
 
         const auto fnReadPosition = [&]() -> glm::fvec3 (*)(Reader &) {
             switch (fmt_vertex) {
-            case eSceGuFmtVertexNONE:
+            case pspgu::eSceGuFmtVertexNONE:
                 return []([[maybe_unused]] Reader &r) { return glm::fvec3{0.0f, 0.0f, 0.0f}; };
-            case eSceGuFmtVertexBYTE:
+            case pspgu::eSceGuFmtVertexBYTE:
                 return [](Reader &r) { return AssertReadAlignedFVecN<int8_t, 3>(r); };
-            case eSceGuFmtVertexSHORT:
+            case pspgu::eSceGuFmtVertexSHORT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<int16_t, 3>(r); };
-            case eSceGuFmtVertexFLOAT:
+            case pspgu::eSceGuFmtVertexFLOAT:
                 return [](Reader &r) { return AssertReadAlignedFVecN<3>(r); };
             default:
                 throw GmoParseError{
@@ -951,17 +779,17 @@ private:
 
         const auto fnReadWeight = [&]() -> float (*)(Reader &) {
             switch (fmt_weight) {
-            case eSceGuFmtWeightNONE:
+            case pspgu::eSceGuFmtWeightNONE:
                 return []([[maybe_unused]] Reader &r) { return 0.0f; };
-            case eSceGuFmtWeightUBYTE:
+            case pspgu::eSceGuFmtWeightUBYTE:
                 return []([[maybe_unused]] Reader &r) {
                     return static_cast<float>(AssertReadAligned<uint8_t>(r)) / 255.0f;
                 };
-            case eSceGuFmtWeightUSHORT:
+            case pspgu::eSceGuFmtWeightUSHORT:
                 return []([[maybe_unused]] Reader &r) {
                     return static_cast<float>(AssertReadAligned<uint16_t>(r)) / 65535.0f;
                 };
-            case eSceGuFmtWeightFLOAT:
+            case pspgu::eSceGuFmtWeightFLOAT:
                 return []([[maybe_unused]] Reader &r) { return AssertReadAligned<float>(r); };
             default:
                 throw GmoParseError{

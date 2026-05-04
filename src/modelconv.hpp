@@ -1,6 +1,7 @@
 #pragma once
 #include "formats/act.hpp"
 #include "formats/gmo.hpp"
+#include "formats/gxx.hpp"
 
 #include "render/model.hpp"
 
@@ -24,6 +25,10 @@ public:
     virtual ~IConvertLogger() = default;
     virtual auto Log(std::string_view message) const -> void = 0;
 };
+
+auto ConvertGXX(
+    const gxx::GxxModel &gxx_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,
+    const IConvertLogger *logger = nullptr) -> std::unique_ptr<render::Model>;
 
 auto ConvertGMO(
     const gmo::GmoModel &gmo_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,
