@@ -3,6 +3,7 @@
 #include <map>
 
 #include <fmt/format.h>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "common/binaryreader.hpp"
 #include "formats/gxx.hpp"
@@ -68,7 +69,7 @@ auto AssertReadStringAt(util::bytes::BinaryReader &reader, uint64_t offset) -> s
     } while (chr);
 
     AssertSeek(reader, offset);
-    const auto buffer = reader.ReadBuffer(length);
+    const auto buffer = reader.ReadBuffer(length - 1);
 
     if (!buffer.has_value()) {
         throw GxxParseError{fmt::format("cannot read string at {}", offset)};
@@ -333,12 +334,47 @@ private:
                 throw GxxParseError{"vertex morphs are not supported"};
             }
 
+            ge_state_.num_weights = num_weights;
+            ge_state_.num_morphs = num_morphs;
+
+            break;
+        }
+
+        case pspgu::SceGeCommand::BONE_MATRIX_NUMBER: {
+            // check pspsdk: src/gu/sceGuBoneMatrix.c
+            // unsigned int offset = ((index << 1) + index) << 2; - inverse of this operation
+            const auto bone_mat_idx = (0x00ffffff & command) / 12;
+
+            if (bone_mat_idx >= 8) {
+                throw GxxParseError{fmt::format("GE command BONE_MATRIX_NUMBER with index {} >= 8", bone_mat_idx)};
+            }
+
+            std::array<float, 16> matrix_values;
+            std::fill(matrix_values.begin(), matrix_values.end(), 0.0f);
+            for (uint32_t i = 0; i < 4; ++i) {
+                for (uint32_t j = 0; j < 3; ++j) {
+                    ge_state_.program_counter = ge_state_.program_counter + sizeof(uint32_t);
+                    const auto mtx_command = AssertReadAt<uint32_t>(reader, ge_state_.program_counter);
+
+                    if (((mtx_command & 0xff000000) >> 24) != pspgu::SceGeCommand::BONE_MATRIX_DATA) {
+                        throw GxxParseError{"invalid gxx, expected 4x3 matrix data values after matrix number command"};
+                    }
+
+                    matrix_values[j + i * 4] = util::bytes::F24ToF32(mtx_command & 0x00ffffff);
+                }
+            }
+
+            ge_state_.bone_matrix[bone_mat_idx] = glm::make_mat4(matrix_values.data());
             break;
         }
 
         case pspgu::SceGeCommand::WORLD_MATRIX_NUMBER: {
             // as per pspsdk: src/gu/sceGuSetMatrix.c
             // the next 3 * 4 commands *SHOULD BE* WORLD_MATRIX_DATA
+
+            if (ge_state_.mtx_unused_flag) {
+                logger_.log("warning: GE command WORLD_MATRIX_NUMBER befure previous matrix was used");
+            }
 
             const auto world_mat_idx = 0x00ffffff & command;
             if (world_mat_idx != 0) {
@@ -359,6 +395,9 @@ private:
                     matrix_values[j + i * 4] = util::bytes::F24ToF32(mtx_command & 0x00ffffff);
                 }
             }
+
+            ge_state_.world_matrix = glm::make_mat4(matrix_values.data());
+            ge_state_.mtx_unused_flag = true;
 
             break;
         }
@@ -431,6 +470,7 @@ private:
 
                 GxxMesh mesh;
                 mesh.id = mesh_uid;
+                mesh.num_weights = ge_state_.num_weights;
                 mesh.primitive_type = primitive_type;
 
                 if (ge_state_.idx_buffer_addr == 0) {
@@ -454,6 +494,8 @@ private:
                 ge_state_.mesh.emplace(iter->second);
             }
 
+            ge_state_.mtx_unused_flag = false;
+
             // build a drawlist
             GxxDrawlist drawlist;
             drawlist.mesh = ge_state_.mesh;
@@ -467,6 +509,13 @@ private:
                 }
             }
 
+            if (ge_state_.num_weights > 0) {
+                drawlist.bone_matrices = ge_state_.bone_matrix;
+                drawlist.num_weights = ge_state_.num_weights;
+            } else {
+                drawlist.num_weights = 0;
+            }
+
             drawlist.world_matrix = ge_state_.world_matrix;
             drawlist.uv_offset = ge_state_.uv_offset;
             drawlist.uv_scale = ge_state_.uv_scale;
@@ -475,7 +524,12 @@ private:
             break;
         }
 
-        case pspgu::SceGeCommand::NOP: {
+        case pspgu::SceGeCommand::NOP:
+
+        // ppsspp calls this NOP_FF, for whatever reason pspsdk called this
+        // matrix normalize to match the enum name remains unchanged, but
+        // handling shall simply ignore this as a "nop" anyways
+        case 0xff: {
             break;
         }
 
@@ -675,6 +729,8 @@ private:
         uint32_t num_morphs = 0;
 
         glm::fmat4x4 world_matrix = glm::fmat4x4{1.0f};
+        bool mtx_unused_flag = false;
+
         std::array<glm::fmat4x4, 8> bone_matrix = {
             glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f},
             glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f},

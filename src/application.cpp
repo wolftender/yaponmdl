@@ -365,8 +365,6 @@ public:
     ActLoader(std::span<const uint8_t> act_buffer) : act_buffer_{act_buffer} {}
 
     virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
-        std::vector<gmo::GmoModel> gmo_model;
-
         try {
             ConvWxLogger logger;
             const auto act_model = act::LoadFromBinary(act_buffer_);
@@ -388,16 +386,28 @@ public:
 
     virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
         std::optional<gxx::GxxModel> gxx_model;
+        GmoTextureRepository repository{directory_};
 
         try {
             GxxWxLogger logger;
-            const auto gxx_model = gxx::LoadModelFromMemory(gxx_buffer_, &logger);
+            gxx_model = gxx::LoadModelFromMemory(gxx_buffer_, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libgxx fatal error: %s", e.what()));
             return nullptr;
         }
 
-        return nullptr;
+        wxLogMessage("finished loading gxx model from file");
+
+        std::unique_ptr<render::Model> model;
+        try {
+            ConvWxLogger logger;
+            model = conv::ConvertGXX(gxx_model.value(), &device, &repository, &logger);
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
+            return nullptr;
+        }
+
+        return model;
     }
 
 private:

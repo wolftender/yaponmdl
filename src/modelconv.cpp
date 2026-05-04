@@ -497,6 +497,179 @@ auto ConvertGMO(
     return model;
 }
 
+auto ConvertIndicesGXX(const std::vector<uint32_t> &gxx_indices, gxx::GxxPrimitiveType primitive)
+    -> std::vector<uint32_t> {
+    std::vector<uint32_t> indices;
+    switch (primitive) {
+    case gxx::GxxPrimitiveType::eGxxPrimitiveTriangles:
+        return gxx_indices;
+
+    case gxx::GxxPrimitiveType::eGxxPrimitiveTriangleFan:
+        for (uint32_t i = 1; i < gxx_indices.size() - 1; ++i) {
+            indices.emplace_back(gxx_indices[0]);
+            indices.emplace_back(gxx_indices[i + 0]);
+            indices.emplace_back(gxx_indices[i + 1]);
+        }
+
+        break;
+
+    case gxx::GxxPrimitiveType::eGxxPrimitiveTriangleStrip:
+        for (uint32_t c = 0; c < gxx_indices.size() - 2; ++c) {
+            if (c % 2 == 0) {
+                indices.emplace_back(gxx_indices[c + 0]);
+                indices.emplace_back(gxx_indices[c + 1]);
+                indices.emplace_back(gxx_indices[c + 2]);
+            } else {
+                indices.emplace_back(gxx_indices[c + 0]);
+                indices.emplace_back(gxx_indices[c + 2]);
+                indices.emplace_back(gxx_indices[c + 1]);
+            }
+        }
+
+        break;
+
+    default:
+        throw std::runtime_error{"unsupported primitive type"};
+    }
+
+    return indices;
+}
+
+auto ConvertGXX(
+    const gxx::GxxModel &gxx_model, render::hal::IDevice *device, const ITextureRepository *repository,
+    const IConvertLogger *logger) -> std::unique_ptr<render::Model> {
+    ConvertConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    using AnyMeshId = std::variant<render::Model::MeshId, render::Model::AnimatedMeshId, std::monostate>;
+
+    auto model = std::make_unique<render::Model>(device);
+    std::vector<render::Model::NodeId> bone_map;
+    std::vector<render::Model::MaterialId> material_map;
+    std::vector<AnyMeshId> mesh_map;
+
+    for (const auto &gxx_bone : gxx_model.bones) {
+        const auto bone_id = model->AddNode(model->GetRoot(), gxx_bone.name);
+        if (!bone_id.has_value()) {
+            throw std::runtime_error{"failed to allocate model node"};
+        }
+
+        bone_map.push_back(bone_id.value());
+    }
+
+    for (const auto &gxx_texture : gxx_model.textures) {
+        const auto bitmap = FetchBitmap(repository, gxx_texture.name);
+        const auto texture_id = model->AddRgbaTexture(bitmap.width, bitmap.height, bitmap.plane);
+
+        render::Model::Material::Description material_desc = {
+            .diffuse = texture_id,
+            .normal = std::nullopt,
+            .specular = std::nullopt,
+        };
+
+        const auto material_id = model->AddMaterial(material_desc);
+        if (!material_id.has_value()) {
+            throw std::runtime_error{"failed to allocate model material"};
+        }
+
+        material_map.push_back(material_id.value());
+    }
+
+    for (uint32_t gxx_mesh_id = 0; gxx_mesh_id < gxx_model.meshes.size(); ++gxx_mesh_id) {
+        const auto &gxx_mesh = gxx_model.meshes[gxx_mesh_id];
+
+        if (gxx_mesh.num_weights == 0) {
+            std::vector<render::StaticVertex> vertices;
+            vertices.reserve(gxx_mesh.vertices.size());
+
+            std::transform(
+                gxx_mesh.vertices.begin(), gxx_mesh.vertices.end(), std::back_inserter(vertices),
+                [&](const gxx::GxxVertex &gxx_vertex) {
+                render::StaticVertex vertex;
+                vertex.position = gxx_vertex.position;
+                vertex.color = gxx_vertex.color;
+                vertex.normal = gxx_vertex.normal;
+                vertex.uv = gxx_vertex.uv;
+
+                return vertex;
+            });
+
+            const auto mesh_id =
+                gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
+                    ? model->AddMesh(vertices, gxx_mesh.indices, material_map.front())
+                    : model->AddMesh(
+                          vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material_map.front());
+            if (!mesh_id.has_value()) {
+                throw std::runtime_error{"failed to allocate model mesh"};
+            }
+
+            mesh_map.push_back(mesh_id.value());
+
+            auto *target_bone = model->GetNode(bone_map[gxx_mesh_id]);
+            if (target_bone) {
+                target_bone->AddMesh(mesh_id.value());
+            }
+        } else {
+            std::vector<render::AnimatedVertex> vertices;
+            vertices.reserve(gxx_mesh.vertices.size());
+
+            std::transform(
+                gxx_mesh.vertices.begin(), gxx_mesh.vertices.end(), std::back_inserter(vertices),
+                [&](const gxx::GxxVertex &gxx_vertex) {
+                render::StaticVertex vertex;
+                vertex.position = gxx_vertex.position;
+                vertex.color = gxx_vertex.color;
+                vertex.normal = gxx_vertex.normal;
+                vertex.uv = gxx_vertex.uv;
+
+                for (uint32_t i = 0; i < gxx_mesh.num_weights; ++i) {
+                    vertex.weights[i] = gxx_vertex.weights[i];
+                }
+
+                return vertex;
+            });
+
+            // since this is a skinned mesh, we add some bones parented to the root
+            render::Model::Skin skin;
+            for (uint32_t i = 0; i < gxx_mesh.num_weights; ++i) {
+                const auto deform_bone_id =
+                    model->AddNode(model->GetRoot(), fmt::format("m{:x}_deform{}", gxx_mesh.id, i));
+                if (!deform_bone_id) {
+                    throw std::runtime_error{"failed to allocate deform bone for mesh"};
+                }
+
+                skin.AddNodeRef(deform_bone_id.value(), glm::fmat4x4{1.0f});
+            }
+
+            const auto skin_id = model->AddSkin(std::move(skin));
+            if (!skin_id.has_value()) {
+                throw std::runtime_error{"failed to allocate deform skin for mesh"};
+            }
+
+            const auto mesh_id =
+                gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
+                    ? model->AddAnimatedMesh(vertices, gxx_mesh.indices, material_map.front(), skin_id.value())
+                    : model->AddAnimatedMesh(
+                          vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material_map.front(),
+                          skin_id.value());
+            if (!mesh_id.has_value()) {
+                throw std::runtime_error{"failed to allocate model animated mesh"};
+            }
+
+            mesh_map.push_back(mesh_id.value());
+
+            auto *target_bone = model->GetNode(bone_map[gxx_mesh_id]);
+            if (target_bone) {
+                target_bone->AddAnimMesh(mesh_id.value());
+            }
+        }
+    }
+
+    return model;
+}
+
 inline auto ConvertInterpolation(act::AnimationInterpolationMode mode) -> render::Model::Animation::InterpolationMode {
     switch (mode) {
     case act::AnimationInterpolationMode::eStep:

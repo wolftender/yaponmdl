@@ -32,6 +32,7 @@ struct GxxVertex {
 
 struct GxxMesh {
     uint32_t id;
+    uint32_t num_weights;
 
     std::vector<GxxVertex> vertices;
     std::vector<uint32_t> indices;
@@ -57,6 +58,12 @@ struct GxxDrawlist {
     glm::fvec4 albedo_color = {1.0f, 1.0f, 1.0f, 1.0f};
     glm::fvec2 uv_offset = {0.0f, 0.0f};
     glm::fvec2 uv_scale = {1.0f, 1.0f};
+
+    uint32_t num_weights = 0;
+    std::array<glm::fmat4x4, 8> bone_matrices = {
+        glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f},
+        glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f}, glm::fmat4x4{1.0f},
+    };
 };
 
 /**
