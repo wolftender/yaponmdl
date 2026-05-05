@@ -445,7 +445,8 @@ auto ConvertGMO(
 
         for (const auto &gmo_animation : gmo_motion.animations) {
             if (gmo_animation.target != gmo::GmoAnimationTarget::eBone) {
-                throw std::runtime_error{"libconv: material animations are not supported"};
+                logger->Log(fmt::format("libconv: motion track {} has an unsupported target type", gmo_motion.name));
+                continue;
             }
 
             using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
@@ -463,8 +464,8 @@ auto ConvertGMO(
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -472,8 +473,8 @@ auto ConvertGMO(
                 if (!node_id.has_value()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -489,8 +490,8 @@ auto ConvertGMO(
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -498,8 +499,8 @@ auto ConvertGMO(
                 if (!node_id.has_value()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -513,8 +514,8 @@ auto ConvertGMO(
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -522,8 +523,8 @@ auto ConvertGMO(
                 if (!node_id.has_value()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -538,8 +539,8 @@ auto ConvertGMO(
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -547,8 +548,8 @@ auto ConvertGMO(
                 if (!node_id.has_value()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -563,8 +564,8 @@ auto ConvertGMO(
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 
@@ -572,8 +573,8 @@ auto ConvertGMO(
                 if (!node_id.has_value()) {
                     logger->Log(
                         fmt::format(
-                            "libconv: animation {} has invalid target {}", gmo_animation.name,
-                            gmo_animation.target_id));
+                            "libconv: animation \"{}\" in motion {} has invalid target {} ", gmo_animation.name,
+                            gmo_motion.name, gmo_animation.target_id));
                     continue;
                 }
 

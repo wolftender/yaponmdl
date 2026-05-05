@@ -238,7 +238,11 @@ auto ReadChunkFull(util::bytes::BinaryReader &parent_reader) -> GmoChunk {
             throw GmoParseError{"invalid chunk: name cannot be read"};
         }
 
-        chunk.name = std::string{name_bytes->begin(), name_bytes->end()};
+        // trim the null bytes at the end as they will break text display sometimes
+        if (name_bytes->size_bytes() >= 1) {
+            const auto name_string = std::string{name_bytes->begin(), name_bytes->end()} + '\0';
+            chunk.name = name_string.c_str();
+        }
     }
 
     return chunk;
@@ -1508,6 +1512,7 @@ private:
                     break;
 
                 default:
+                    anim.target = GmoAnimationTarget::eUnknown;
                     GMO_DEBUG_PRINT(
                         logger_, "invalid animate target type {} for motion {}", ref_type, motion_chunk.name);
                     break;
