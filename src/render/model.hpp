@@ -12,8 +12,9 @@
 namespace render {
 
 template <typename T>
-concept AnimationPropertyType = std::convertible_to<T, glm::fvec2> || std::convertible_to<T, glm::fvec3> ||
-                                std::convertible_to<T, glm::fvec4> || std::convertible_to<T, glm::fquat>;
+concept AnimationPropertyType =
+    std::convertible_to<T, glm::fvec1> || std::convertible_to<T, glm::fvec2> || std::convertible_to<T, glm::fvec3> ||
+    std::convertible_to<T, glm::fvec4> || std::convertible_to<T, glm::fquat>;
 
 class Model final {
     struct MeshTag {};
@@ -164,6 +165,7 @@ public:
         auto GetColor() const -> const glm::fvec4 & { return color_; }
         auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
         auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
+        auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
 
         auto SetTranslation(const glm::fvec3 &translation) -> void { translation_ = translation; }
         auto SetScale(const glm::fvec3 &scale) -> void { scale_ = scale; }
@@ -176,9 +178,9 @@ public:
         Node(
             Model *model, NodeId self, std::string_view name, std::optional<NodeId> parent,
             const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation, const glm::fvec4 &color,
-            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale)
+            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale, const glm::fvec1 &alpha)
             : model_{model}, self_{self}, name_{name}, parent_{parent}, translation_{translation}, scale_{scale},
-              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale} {}
+              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale}, alpha_{alpha} {}
 
         Model *model_ = nullptr;
         NodeId self_;
@@ -197,6 +199,7 @@ public:
         glm::fvec4 color_;
         glm::fvec2 uv_offset_;
         glm::fvec2 uv_scale_;
+        glm::fvec1 alpha_;
 
         friend class Model;
     };
@@ -276,6 +279,7 @@ public:
             auto GetColor() const -> const glm::fvec4 & { return color_; }
             auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
             auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
+            auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
 
             auto SetTransform(const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation)
                 -> void;
@@ -283,6 +287,7 @@ public:
             auto SetColor(const glm::fvec4 &color) -> void { color_ = color; }
             auto SetUvOffset(const glm::fvec2 &uv_offset) -> void { uv_offset_ = uv_offset; }
             auto SetUvScale(const glm::fvec2 &uv_scale) -> void { uv_scale_ = uv_scale; }
+            auto SetAlpha(const glm::fvec1 &alpha) -> void { alpha_ = alpha; }
 
         private:
             Node(Pose *pose, NodeId node) : pose_{pose}, self_{node} {};
@@ -299,6 +304,7 @@ public:
             glm::fvec4 color_;
             glm::fvec2 uv_offset_;
             glm::fvec2 uv_scale_;
+            glm::fvec1 alpha_;
 
             std::vector<NodeId> children_;
 
@@ -329,6 +335,8 @@ public:
 
             RecomputeTransformSubtree(GetRoot());
         }
+
+        auto Reset(const Model &model) -> void;
 
     private:
         static auto FromModel(const Model &model) -> std::unique_ptr<Pose>;
@@ -362,6 +370,7 @@ public:
             eColor,
             eUvOffset,
             eUvScale,
+            eAlpha,
         };
 
         template <NodeTargetProperty Prop> struct NodePropertyDataType;
@@ -388,6 +397,10 @@ public:
 
         template <> struct NodePropertyDataType<NodeTargetProperty::eUvScale> {
             using Type = glm::fvec2;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eAlpha> {
+            using Type = glm::fvec1;
         };
 
         template <AnimationPropertyType T> struct Keyframe final {

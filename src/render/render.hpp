@@ -124,11 +124,12 @@ public:
 
     struct StaticDrawDescription {
         MeshHandle mesh;
-        glm::fmat4x4 world_matrix = {1.0f};
+        glm::fmat4x4 world_matrix = glm::fmat4x4{1.0f};
 
-        glm::fvec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-        glm::fvec2 uv_offset = {0.0f, 0.0f};
-        glm::fvec2 uv_scale = {1.0f, 1.0f};
+        glm::fvec4 color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+        glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+        glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+        glm::fvec1 alpha = glm::fvec1{1.0f};
 
         std::optional<TextureHandle> diffuse_map;
         std::optional<TextureHandle> normal_map;
@@ -138,11 +139,12 @@ public:
         AnimMeshHandle mesh;
         SkinningBufferHandle skinning_buffer;
 
-        glm::fmat4x4 world_matrix = {1.0f};
+        glm::fmat4x4 world_matrix = glm::fmat4x4{1.0f};
 
-        glm::fvec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-        glm::fvec2 uv_offset = {0.0f, 0.0f};
-        glm::fvec2 uv_scale = {1.0f, 1.0f};
+        glm::fvec4 color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+        glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+        glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+        glm::fvec1 alpha = glm::fvec1{1.0f};
 
         std::optional<TextureHandle> diffuse_map;
         std::optional<TextureHandle> normal_map;

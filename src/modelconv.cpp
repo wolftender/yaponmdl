@@ -527,11 +527,52 @@ auto ConvertGMO(
                 break;
             }
             case gmo::eAnimPataponTextureEXT: {
-                // TODO
+                if (gmo_animation.target_id >= node_map.size()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
+                const auto node_id = node_map[gmo_animation.target_id];
+                if (!node_id.has_value()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
+                animation.AppendNodeChannel<NodeTargetProperty::eUvOffset>(
+                    node_id.value(), [&](auto &uv_offset_channel) {
+                    ConvertGMOKeyframes<NodeTargetProperty::eUvOffset>(uv_offset_channel, gmo_motion, gmo_animation);
+                });
+
                 break;
             }
             case gmo::eAnimPataponUnknownEXT: {
-                // TODO
+                if (gmo_animation.target_id >= node_map.size()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
+                const auto node_id = node_map[gmo_animation.target_id];
+                if (!node_id.has_value()) {
+                    logger->Log(
+                        fmt::format(
+                            "libconv: animation {} has invalid target {}", gmo_animation.name,
+                            gmo_animation.target_id));
+                    continue;
+                }
+
+                animation.AppendNodeChannel<NodeTargetProperty::eAlpha>(node_id.value(), [&](auto &alpha_channel) {
+                    ConvertGMOKeyframes<NodeTargetProperty::eAlpha>(alpha_channel, gmo_motion, gmo_animation);
+                });
+
                 break;
             }
             default:

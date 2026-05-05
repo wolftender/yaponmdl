@@ -68,6 +68,22 @@ auto Model::Pose::GetNode(NodeId handle) const -> const Node * {
     return &nodes_[handle.index()];
 }
 
+auto Model::Pose::Reset(const Model &model) -> void {
+    for (auto &pose_node : nodes_) {
+        const auto *node = model.GetNode(pose_node.GetSelf());
+
+        pose_node.translation_ = node->GetTranslation();
+        pose_node.scale_ = node->GetScale();
+        pose_node.rotation_ = node->GetRotation();
+        pose_node.parent_ = node->GetParent();
+        pose_node.children_ = node->GetChildren();
+        pose_node.color_ = node->GetColor();
+        pose_node.uv_offset_ = node->GetUvOffset();
+        pose_node.uv_scale_ = node->GetUvScale();
+        pose_node.alpha_ = node->GetAlpha();
+    }
+}
+
 auto Model::Pose::FromModel(const Model &model) -> std::unique_ptr<Pose> {
     auto pose = std::unique_ptr<Pose>(new Pose());
 
@@ -85,6 +101,7 @@ auto Model::Pose::FromModel(const Model &model) -> std::unique_ptr<Pose> {
         pose_node.color_ = node.GetColor();
         pose_node.uv_offset_ = node.GetUvOffset();
         pose_node.uv_scale_ = node.GetUvScale();
+        pose_node.alpha_ = node.GetAlpha();
 
         pose->nodes_.emplace_back(std::move(pose_node));
     }
@@ -149,6 +166,7 @@ Model::Model(hal::IDevice *device) : device_{device} {
             /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
             /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
             /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
+            /* alpha       = */ glm::fvec1{1.0f},
         });
 }
 
@@ -218,6 +236,7 @@ auto Model::AddNode(NodeId parent, std::string_view name) -> std::optional<NodeI
             /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
             /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
             /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
+            /* alpha       = */ glm::fvec1{1.0f},
         });
 
     node = GetNode(parent);
@@ -356,9 +375,10 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
             hal::StaticDrawDescription draw_desc = {
                 .mesh = mesh.GetHandle(),
                 .world_matrix = matrix,
-                .color = material.GetColor() * node.GetColor(),
-                .uv_offset = node.GetUvOffset(),
-                .uv_scale = node.GetUvScale(),
+                .color = material.GetColor() * pose_node.GetColor(),
+                .uv_offset = pose_node.GetUvOffset(),
+                .uv_scale = pose_node.GetUvScale(),
+                .alpha = pose_node.GetAlpha(),
                 .diffuse_map = std::nullopt,
                 .normal_map = std::nullopt,
             };
@@ -393,9 +413,10 @@ auto Model::Render(Pose &pose, const glm::fmat4x4 &world) const -> void {
                 .mesh = anim_mesh.GetHandle(),
                 .skinning_buffer = pose.skinning_buffers_[anim_mesh_id.index()],
                 .world_matrix = world,
-                .color = material.GetColor() * node.GetColor(),
-                .uv_offset = node.GetUvOffset(),
-                .uv_scale = node.GetUvScale(),
+                .color = material.GetColor() * pose_node.GetColor(),
+                .uv_offset = pose_node.GetUvOffset(),
+                .uv_scale = pose_node.GetUvScale(),
+                .alpha = pose_node.GetAlpha(),
                 .diffuse_map = std::nullopt,
                 .normal_map = std::nullopt,
             };
@@ -478,6 +499,8 @@ auto Model::Controller::Seek(float time) -> void {
 }
 
 auto Model::Controller::ResetAnimationData(const Animation &animation) -> void {
+    pose_->Reset(*model_);
+
     animation.IterateNodeChannels([&](uint32_t channel_id, const Animation::AnyNodeChannel &channel) -> void {
         channel.Start(*pose_, node_channel_data_[channel_id]);
     });
@@ -603,6 +626,15 @@ auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eUvScal
     ::render::Interpolate(interpolation_, k0, k1, time, &result);
 
     node->SetUvScale(result);
+}
+
+template <>
+auto Model::Animation::NodeChannel<Model::Animation::NodeTargetProperty::eAlpha>::Interpolate(
+    const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const -> void {
+    glm::fvec1 result = node->GetAlpha();
+    ::render::Interpolate(interpolation_, k0, k1, time, &result);
+
+    node->SetAlpha(result);
 }
 
 auto Model::Controller::UpdateAnimation(const Animation &animation) -> void {
