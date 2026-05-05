@@ -3,7 +3,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include <variant>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -13,7 +12,9 @@
 namespace render {
 
 template <typename T>
-concept AnimationPropertyType = std::convertible_to<T, glm::fvec3> || std::convertible_to<T, glm::fquat>;
+concept AnimationPropertyType =
+    std::convertible_to<T, glm::fvec1> || std::convertible_to<T, glm::fvec2> || std::convertible_to<T, glm::fvec3> ||
+    std::convertible_to<T, glm::fvec4> || std::convertible_to<T, glm::fquat>;
 
 class Model final {
     struct MeshTag {};
@@ -161,6 +162,10 @@ public:
         auto GetChildren() const -> const std::vector<NodeId> & { return children_; }
         auto GetMeshes() const -> const std::vector<MeshId> & { return meshes_; }
         auto GetAnimMeshes() const -> const std::vector<AnimatedMeshId> & { return animated_meshes_; }
+        auto GetColor() const -> const glm::fvec4 & { return color_; }
+        auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
+        auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
+        auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
 
         auto SetTranslation(const glm::fvec3 &translation) -> void { translation_ = translation; }
         auto SetScale(const glm::fvec3 &scale) -> void { scale_ = scale; }
@@ -172,20 +177,29 @@ public:
     private:
         Node(
             Model *model, NodeId self, std::string_view name, std::optional<NodeId> parent,
-            const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation)
+            const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation, const glm::fvec4 &color,
+            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale, const glm::fvec1 &alpha)
             : model_{model}, self_{self}, name_{name}, parent_{parent}, translation_{translation}, scale_{scale},
-              rotation_{rotation} {}
+              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale}, alpha_{alpha} {}
 
         Model *model_ = nullptr;
         NodeId self_;
+
         std::string name_;
         std::optional<NodeId> parent_;
+
         glm::fvec3 translation_;
         glm::fvec3 scale_;
         glm::fquat rotation_;
+
         std::vector<MeshId> meshes_;
         std::vector<AnimatedMeshId> animated_meshes_;
         std::vector<NodeId> children_;
+
+        glm::fvec4 color_;
+        glm::fvec2 uv_offset_;
+        glm::fvec2 uv_scale_;
+        glm::fvec1 alpha_;
 
         friend class Model;
     };
@@ -193,9 +207,13 @@ public:
     class Material final {
     public:
         struct Description {
-            std::optional<TextureId> diffuse;
-            std::optional<TextureId> normal;
-            std::optional<TextureId> specular;
+            std::optional<TextureId> diffuse = std::nullopt;
+            std::optional<TextureId> normal = std::nullopt;
+            std::optional<TextureId> specular = std::nullopt;
+
+            glm::fvec4 color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+            glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+            glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
         };
 
         Material(const Material &) = delete;
@@ -208,148 +226,27 @@ public:
         auto GetDiffuse() const -> std::optional<TextureId> { return diffuse_; }
         auto GetNormal() const -> std::optional<TextureId> { return normal_; }
         auto GetSpecular() const -> std::optional<TextureId> { return specular_; }
+        auto GetColor() const -> const glm::fvec4 & { return color_; }
+        auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
+        auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
 
     private:
-        Material(
-            Model *model, std::optional<TextureId> diffuse, std::optional<TextureId> normal,
-            std::optional<TextureId> specular)
-            : model_{model}, diffuse_{diffuse}, normal_{normal}, specular_{specular} {}
+        Material(Model *model, const Description &description)
+            : model_{model}, diffuse_{description.diffuse}, normal_{description.normal},
+              specular_{description.specular}, color_{description.color}, uv_offset_{description.uv_offset},
+              uv_scale_{description.uv_scale} {}
 
         Model *model_ = nullptr;
+
         std::optional<TextureId> diffuse_;
         std::optional<TextureId> normal_;
         std::optional<TextureId> specular_;
 
+        glm::fvec4 color_;
+        glm::fvec2 uv_offset_;
+        glm::fvec2 uv_scale_;
+
         friend class Model;
-    };
-
-    class Animation final {
-    public:
-        enum class InterpolationMode {
-            eStep,
-            eLinear,
-            eCubic,
-        };
-
-        enum class TargetProperty {
-            eRotation,
-            eTranslation,
-            eScale,
-        };
-
-        template <TargetProperty Prop> struct PropertyDataType;
-
-        template <> struct PropertyDataType<TargetProperty::eRotation> {
-            using Type = glm::fquat;
-        };
-
-        template <> struct PropertyDataType<TargetProperty::eTranslation> {
-            using Type = glm::fvec3;
-        };
-
-        template <> struct PropertyDataType<TargetProperty::eScale> {
-            using Type = glm::fvec3;
-        };
-
-        template <AnimationPropertyType T> struct Keyframe final {
-            T value;
-            float time;
-        };
-
-        template <TargetProperty Prop> class Channel final {
-        public:
-            using PropertyType = typename PropertyDataType<Prop>::Type;
-            using KeyframeType = Keyframe<PropertyType>;
-
-            explicit Channel(NodeId node) : node_{node}, interpolation_{InterpolationMode::eLinear} {}
-
-            ~Channel() noexcept = default;
-
-            Channel(const Channel &) = delete;
-            auto operator=(const Channel &) = delete;
-
-            Channel(Channel &&) noexcept = default;
-            auto operator=(Channel &&) noexcept -> Channel & = default;
-
-            auto GetKeyframes() const -> const std::vector<KeyframeType> & { return keyframes_; }
-            auto GetInterpolation() const -> InterpolationMode { return interpolation_; }
-            auto GetNode() const -> NodeId { return node_; }
-
-            auto GetKeyframes() -> std::vector<KeyframeType> & { return keyframes_; }
-            auto SetInterpolation(InterpolationMode mode) { interpolation_ = mode; }
-
-            auto sort() -> void {
-                std::sort(
-                    keyframes_.begin(), keyframes_.end(), [](const auto &a, const auto &b) { return a.time < b.time; });
-            }
-
-        private:
-            std::vector<KeyframeType> keyframes_;
-
-            NodeId node_;
-            InterpolationMode interpolation_;
-        };
-
-        using TranslationChannel = Channel<TargetProperty::eTranslation>;
-        using RotationChannel = Channel<TargetProperty::eRotation>;
-        using ScaleChannel = Channel<TargetProperty::eScale>;
-
-        using AnyChannel = std::variant<RotationChannel, TranslationChannel, ScaleChannel>;
-
-        explicit Animation(std::string_view name) : duration_{0.0f}, name_{name} {}
-
-        Animation(const Animation &) = delete;
-        auto operator=(const Animation &) = delete;
-
-        Animation(Animation &&) noexcept = default;
-        auto operator=(Animation &&) noexcept -> Animation & = default;
-
-        auto GetDuration() const -> float { return duration_; }
-        auto GetName() const -> const std::string & { return name_; }
-
-        auto GetTranslationChanCount() const -> uint32_t { return translation_channels_.size(); }
-        auto GetRotationChanCount() const -> uint32_t { return rotation_channels_.size(); }
-        auto GetScaleChanCount() const -> uint32_t { return scale_channels_.size(); }
-
-        template <TargetProperty Prop> auto AppendChannel(Channel<Prop> &&channel) -> void {
-            const auto last_keyframe_time = !channel.GetKeyframes().empty() ? channel.GetKeyframes().back().time : 0.0f;
-            duration_ = std::max(duration_, last_keyframe_time);
-
-            if constexpr (Prop == TargetProperty::eTranslation) {
-                translation_channels_.emplace_back(std::move(channel));
-            } else if constexpr (Prop == TargetProperty::eRotation) {
-                rotation_channels_.emplace_back(std::move(channel));
-            } else if constexpr (Prop == TargetProperty::eScale) {
-                scale_channels_.emplace_back(std::move(channel));
-            } else {
-                static_assert(false, "unsupported channel type");
-            }
-        }
-
-        template <TargetProperty Prop, std::invocable<uint32_t, const Channel<Prop> &> F>
-        auto IterateChannels(F consumer) const -> void {
-            auto &channels = [this]() -> const auto & {
-                if constexpr (Prop == TargetProperty::eTranslation) {
-                    return translation_channels_;
-                } else if constexpr (Prop == TargetProperty::eRotation) {
-                    return rotation_channels_;
-                } else if constexpr (Prop == TargetProperty::eScale) {
-                    return scale_channels_;
-                }
-            }();
-
-            for (uint32_t channel_id = 0; channel_id < channels.size(); ++channel_id) {
-                consumer(channel_id, channels[channel_id]);
-            }
-        }
-
-    private:
-        std::vector<TranslationChannel> translation_channels_;
-        std::vector<RotationChannel> rotation_channels_;
-        std::vector<ScaleChannel> scale_channels_;
-
-        float duration_;
-        std::string name_;
     };
 
     class Pose final {
@@ -379,9 +276,18 @@ public:
             auto GetTranslation() const -> const glm::fvec3 & { return translation_; }
             auto GetScale() const -> const glm::fvec3 & { return scale_; }
             auto GetRotation() const -> const glm::fquat & { return rotation_; }
+            auto GetColor() const -> const glm::fvec4 & { return color_; }
+            auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
+            auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
+            auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
 
             auto SetTransform(const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation)
                 -> void;
+
+            auto SetColor(const glm::fvec4 &color) -> void { color_ = color; }
+            auto SetUvOffset(const glm::fvec2 &uv_offset) -> void { uv_offset_ = uv_offset; }
+            auto SetUvScale(const glm::fvec2 &uv_scale) -> void { uv_scale_ = uv_scale; }
+            auto SetAlpha(const glm::fvec1 &alpha) -> void { alpha_ = alpha; }
 
         private:
             Node(Pose *pose, NodeId node) : pose_{pose}, self_{node} {};
@@ -394,6 +300,11 @@ public:
             glm::fvec3 scale_;
             glm::fquat rotation_;
             glm::fmat4x4 transform_;
+
+            glm::fvec4 color_;
+            glm::fvec2 uv_offset_;
+            glm::fvec2 uv_scale_;
+            glm::fvec1 alpha_;
 
             std::vector<NodeId> children_;
 
@@ -425,6 +336,8 @@ public:
             RecomputeTransformSubtree(GetRoot());
         }
 
+        auto Reset(const Model &model) -> void;
+
     private:
         static auto FromModel(const Model &model) -> std::unique_ptr<Pose>;
 
@@ -439,6 +352,214 @@ public:
 
         friend class Model;
         friend class Controller;
+    };
+
+    class Animation final {
+    public:
+        enum class InterpolationMode {
+            eStep,
+            eLinear,
+            eCubic,
+            eHermite,
+        };
+
+        enum class NodeTargetProperty {
+            eRotation,
+            eTranslation,
+            eScale,
+            eColor,
+            eUvOffset,
+            eUvScale,
+            eAlpha,
+        };
+
+        template <NodeTargetProperty Prop> struct NodePropertyDataType;
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eRotation> {
+            using Type = glm::fquat;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eTranslation> {
+            using Type = glm::fvec3;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eScale> {
+            using Type = glm::fvec3;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eColor> {
+            using Type = glm::fvec4;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eUvOffset> {
+            using Type = glm::fvec2;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eUvScale> {
+            using Type = glm::fvec2;
+        };
+
+        template <> struct NodePropertyDataType<NodeTargetProperty::eAlpha> {
+            using Type = glm::fvec1;
+        };
+
+        template <AnimationPropertyType T> struct Keyframe final {
+            T value;
+            float time;
+
+            T in_dx, in_dy;
+            T out_dx, out_dy;
+        };
+
+        class AnyNodeChannel {
+        public:
+            struct Data final {
+            public:
+                auto GetPrevKeyframe() const -> uint32_t { return prev_keyframe_; }
+                auto GetNextKeyframe() const -> uint32_t { return next_keyframe_; }
+                auto GetPrevKeyframeTime() const -> float { return prev_keyframe_time_; }
+                auto GetNextKeyframeTime() const -> float { return next_keyframe_time_; }
+
+            private:
+                float prev_keyframe_time_ = 0.0f;
+                float next_keyframe_time_ = 0.0f;
+                uint32_t prev_keyframe_ = 0;
+                uint32_t next_keyframe_ = 0;
+
+                friend class AnyNodeChannel;
+            };
+
+            AnyNodeChannel(NodeId node) : node_{node} {}
+            virtual ~AnyNodeChannel() noexcept = default;
+
+            AnyNodeChannel(const AnyNodeChannel &) = delete;
+            auto operator=(const AnyNodeChannel &) = delete;
+
+            auto GetNode() const -> NodeId { return node_; }
+            auto Start(Pose &pose, Data &animation_data) const -> void;
+            auto Apply(float time, Pose &pose, Data &animation_data) const -> void;
+
+            virtual auto GetNumKeyframes() const -> uint32_t = 0;
+            virtual auto GetKeyframeTime(uint32_t keyframe_id) const -> float = 0;
+
+        protected:
+            virtual auto Apply(
+                float time, Pose::Node *node, float *prev_keyframe_time, float *next_keyframe_time,
+                uint32_t *prev_keyframe, uint32_t *next_keyframe) const -> void = 0;
+
+        private:
+            NodeId node_;
+        };
+
+        template <NodeTargetProperty Prop> class NodeChannel final : public AnyNodeChannel {
+        public:
+            using PropertyType = typename NodePropertyDataType<Prop>::Type;
+            using KeyframeType = Keyframe<PropertyType>;
+
+            explicit NodeChannel(NodeId node) : AnyNodeChannel{node}, interpolation_{InterpolationMode::eLinear} {}
+
+            ~NodeChannel() noexcept = default;
+
+            NodeChannel(const NodeChannel &) = delete;
+            auto operator=(const NodeChannel &) = delete;
+
+            NodeChannel(NodeChannel &&) noexcept = default;
+            auto operator=(NodeChannel &&) noexcept -> NodeChannel & = default;
+
+            auto GetKeyframes() const -> const std::vector<KeyframeType> & { return keyframes_; }
+            auto GetInterpolation() const -> InterpolationMode { return interpolation_; }
+
+            auto GetKeyframes() -> std::vector<KeyframeType> & { return keyframes_; }
+            auto SetInterpolation(InterpolationMode mode) { interpolation_ = mode; }
+
+            auto sort() -> void {
+                std::sort(
+                    keyframes_.begin(), keyframes_.end(), [](const auto &a, const auto &b) { return a.time < b.time; });
+            }
+
+            auto GetNumKeyframes() const -> uint32_t override { return keyframes_.size(); }
+            auto GetKeyframeTime(uint32_t keyframe_id) const -> float override { return keyframes_[keyframe_id].time; }
+
+        protected:
+            auto Apply(
+                float time, Pose::Node *node, float *prev_keyframe_time, float *next_keyframe_time,
+                uint32_t *prev_keyframe, uint32_t *next_keyframe) const -> void override {
+
+                if (time > *next_keyframe_time) {
+                    const auto num_keyframes = keyframes_.size();
+                    while ((*next_keyframe < num_keyframes - 1) && (keyframes_[*next_keyframe].time < time)) {
+                        (*prev_keyframe)++;
+                        (*next_keyframe)++;
+
+                        *prev_keyframe_time = keyframes_[*prev_keyframe].time;
+                        *next_keyframe_time = keyframes_[*next_keyframe].time;
+                    }
+                }
+
+                const auto &prev_keyframe_ref = keyframes_[*prev_keyframe];
+                const auto &next_keyframe_ref = keyframes_[*next_keyframe];
+
+                Interpolate(prev_keyframe_ref, next_keyframe_ref, time, node);
+            }
+
+        private:
+            auto Interpolate(const KeyframeType &k0, const KeyframeType &k1, float time, Pose::Node *node) const
+                -> void;
+
+            std::vector<KeyframeType> keyframes_;
+            InterpolationMode interpolation_;
+        };
+
+        using NodeTranslationChannel = NodeChannel<NodeTargetProperty::eTranslation>;
+        using NodeRotationChannel = NodeChannel<NodeTargetProperty::eRotation>;
+        using NodeScaleChannel = NodeChannel<NodeTargetProperty::eScale>;
+        using NodeColorChannel = NodeChannel<NodeTargetProperty::eColor>;
+        using NodeUvOffsetChannel = NodeChannel<NodeTargetProperty::eUvOffset>;
+        using NodeUvScaleChannel = NodeChannel<NodeTargetProperty::eUvScale>;
+
+        explicit Animation(std::string_view name) : duration_{0.0f}, name_{name} {}
+
+        Animation(const Animation &) = delete;
+        auto operator=(const Animation &) = delete;
+
+        Animation(Animation &&) noexcept = default;
+        auto operator=(Animation &&) noexcept -> Animation & = default;
+
+        auto GetDuration() const -> float { return duration_; }
+        auto GetName() const -> const std::string & { return name_; }
+
+        auto GetNodeChannelCount() const -> uint32_t { return node_channels_.size(); }
+
+        auto SetDuration(float duration) -> void {
+            if (duration >= 0.0f) {
+                duration_ = std::min(duration, duration_);
+            }
+        }
+
+        template <NodeTargetProperty Prop, std::invocable<NodeChannel<Prop> &> F>
+        auto AppendNodeChannel(NodeId target, F builder) -> void {
+            auto channel = std::make_unique<NodeChannel<Prop>>(target);
+            builder(*channel.get());
+
+            const auto last_keyframe_time =
+                !channel->GetKeyframes().empty() ? channel->GetKeyframes().back().time : 0.0f;
+            duration_ = std::max(duration_, last_keyframe_time);
+
+            node_channels_.emplace_back(std::move(channel));
+        }
+
+        template <std::invocable<uint32_t, const AnyNodeChannel &> F>
+        auto IterateNodeChannels(F consumer) const -> void {
+            for (uint32_t channel_id = 0; channel_id < node_channels_.size(); ++channel_id) {
+                consumer(channel_id, *node_channels_[channel_id].get());
+            }
+        }
+
+    private:
+        std::vector<std::unique_ptr<AnyNodeChannel>> node_channels_;
+
+        float duration_;
+        std::string name_;
     };
 
     Model(hal::IDevice *Device);
@@ -547,10 +668,6 @@ public:
             InitializeAnimationData();
         }
 
-        using TranslationChannel = Animation::TranslationChannel;
-        using RotationChhannel = Animation::RotationChannel;
-        using ScaleChannel = Animation::ScaleChannel;
-
     public:
         Controller(const Controller &) = delete;
         auto operator=(const Controller &) -> Controller & = delete;
@@ -574,70 +691,9 @@ public:
         auto Seek(float time) -> void;
 
     private:
-        template <Animation::TargetProperty Prop>
-        auto ResetChannelData(
-            std::vector<ChannelData> &channel_data, uint32_t channel_id, const Animation::Channel<Prop> &channel)
-            -> void {
-            const auto &keyframes = channel.GetKeyframes();
-
-            if (keyframes.size() == 0) { // invalid channel dont initialize?
-                return;
-            }
-
-            if (keyframes.size() == 1) { // one keyframe, simply add it
-                channel_data[channel_id].prev_keyframe = 0;
-                channel_data[channel_id].next_keyframe = 0;
-                channel_data[channel_id].prev_keyframe_time = 0.0f;
-                channel_data[channel_id].next_keyframe_time = 99999.0f;
-                return;
-            }
-
-            // otherwise pick the first keyframe and the second keyframe
-            channel_data[channel_id].prev_keyframe = 0;
-            channel_data[channel_id].next_keyframe = 1;
-            channel_data[channel_id].prev_keyframe_time = keyframes[0].time;
-            channel_data[channel_id].next_keyframe_time = keyframes[1].time;
-        }
-
         auto ResetAnimationData(const Animation &animation) -> void;
         auto InitializeAnimationData() -> void;
 
-        template <
-            Animation::TargetProperty Prop,
-            std::invocable<
-                const typename Animation::Channel<Prop>::KeyframeType &,
-                const typename Animation::Channel<Prop>::KeyframeType &, float, Pose::Node &>
-                F>
-        auto UpdateAnimationChannel(
-            std::vector<ChannelData> &channel_data_list, uint32_t channel_id, const Animation::Channel<Prop> &channel,
-            F interpolate) -> void {
-            const auto &keyframes = channel.GetKeyframes();
-            auto &channel_data = channel_data_list[channel_id];
-
-            if (time_ > channel_data.next_keyframe_time) {
-                const auto num_keyframes = keyframes.size();
-                while ((channel_data.next_keyframe < num_keyframes - 1) &&
-                       (keyframes[channel_data.next_keyframe].time < time_)) {
-                    channel_data.prev_keyframe++;
-                    channel_data.next_keyframe++;
-
-                    channel_data.prev_keyframe_time = keyframes[channel_data.prev_keyframe].time;
-                    channel_data.next_keyframe_time = keyframes[channel_data.next_keyframe].time;
-                }
-            }
-
-            const auto &prev_keyframe = keyframes[channel_data.prev_keyframe];
-            const auto &next_keyframe = keyframes[channel_data.next_keyframe];
-
-            auto node = pose_->GetNode(channel.GetNode());
-            if (node) {
-                interpolate(prev_keyframe, next_keyframe, time_, *node);
-            }
-        }
-
-        auto UpdateAnimationChannel(uint32_t channel_id, const TranslationChannel &channel) -> void;
-        auto UpdateAnimationChannel(uint32_t channel_id, const RotationChhannel &channel) -> void;
-        auto UpdateAnimationChannel(uint32_t channel_id, const ScaleChannel &channel) -> void;
         auto UpdateAnimation(const Animation &animation) -> void;
 
         const Model *model_;
@@ -648,9 +704,7 @@ public:
         float time_;
         bool loop_;
 
-        std::vector<ChannelData> translation_data_;
-        std::vector<ChannelData> rotation_data_;
-        std::vector<ChannelData> scale_data_;
+        std::vector<Animation::AnyNodeChannel::Data> node_channel_data_;
 
         friend class Model;
     };

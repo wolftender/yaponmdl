@@ -258,8 +258,8 @@ struct GmoMaterial {
     // clang-format off
     std::array<glm::fvec4, eGmoMaterialColorCount> colors = {
         glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
-        glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
-        glm::fvec4{0.0f, 0.0f, 0.0f, 1.0f},
+        glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+        glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
         glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
         glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
         glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
@@ -280,6 +280,7 @@ struct GmoTexture {
 enum class GmoAnimationTarget {
     eBone,
     eMaterial,
+    eUnknown,
 };
 
 enum GmoAnimationProperty {

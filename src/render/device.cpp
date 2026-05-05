@@ -72,6 +72,10 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
                 }
             }
 
+            context.SetUniform("u_color", draw->color);
+            context.SetUniform("u_uv_offset", draw->uv_offset);
+            context.SetUniform("u_uv_scale", draw->uv_scale);
+            context.SetUniform("u_alpha", draw->alpha.x);
             context.SetUniform("u_world", draw->world_matrix);
             mesh->Draw();
 
@@ -104,6 +108,10 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
             skin_buffer->ExecuteUpload();
 
             context.SetBufferBase("u_bones", *skin_buffer);
+            context.SetUniform("u_color", draw->color);
+            context.SetUniform("u_uv_offset", draw->uv_offset);
+            context.SetUniform("u_uv_scale", draw->uv_scale);
+            context.SetUniform("u_alpha", draw->alpha.x);
             context.SetUniform("u_world", glm::fmat4x4{1.0f});
             mesh->Draw();
 

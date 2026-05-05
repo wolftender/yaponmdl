@@ -85,6 +85,11 @@ public:
                 name, GL_FLOAT_VEC3, [&](const auto &u) { glUniform3fv(u.location, 1, glm::value_ptr(value)); });
         }
 
+        template <StringValue S> auto SetUniform(const S &name, const glm::fvec4 &value) const -> void {
+            WithUniform(
+                name, GL_FLOAT_VEC4, [&](const auto &u) { glUniform4fv(u.location, 1, glm::value_ptr(value)); });
+        }
+
         template <StringValue S> auto SetUniform(const S &name, const glm::fmat2 &value) const -> void {
             WithUniform(name, GL_FLOAT_MAT2, [&](const auto &u) {
                 glUniformMatrix2fv(u.location, 1, GL_FALSE, glm::value_ptr(value));
