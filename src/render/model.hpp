@@ -530,6 +530,12 @@ public:
 
         auto GetNodeChannelCount() const -> uint32_t { return node_channels_.size(); }
 
+        auto SetDuration(float duration) -> void {
+            if (duration >= 0.0f) {
+                duration_ = std::min(duration, duration_);
+            }
+        }
+
         template <NodeTargetProperty Prop, std::invocable<NodeChannel<Prop> &> F>
         auto AppendNodeChannel(NodeId target, F builder) -> void {
             auto channel = std::make_unique<NodeChannel<Prop>>(target);

@@ -541,7 +541,7 @@ inline auto Interpolate(
     }
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
-        *result = v1;
+        *result = v0;
         break;
     }
 }
@@ -569,7 +569,7 @@ inline auto Interpolate(
     }
     case Model::Animation::InterpolationMode::eCubic:
     case Model::Animation::InterpolationMode::eStep:
-        *result = v1;
+        *result = v0;
         break;
     }
 }

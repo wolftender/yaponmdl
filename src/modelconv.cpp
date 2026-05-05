@@ -451,6 +451,14 @@ auto ConvertGMO(
             using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
 
             switch (gmo_animation.property) {
+            case gmo::eAnimBoneScale1:
+            case gmo::eAnimBoneScale3:
+                logger->Log(
+                    fmt::format(
+                        "libconv: warning! scale 1 or scale 3 is used for this models animation track {}",
+                        gmo_animation.name));
+                break;
+
             case gmo::eAnimBoneTranslate: {
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
@@ -580,6 +588,7 @@ auto ConvertGMO(
             }
         }
 
+        animation.SetDuration(gmo_motion.frame_loop_end / gmo_motion.framerate);
         model->AddAnimation(std::move(animation));
     }
 
