@@ -27,7 +27,7 @@ struct GxxVertex {
     glm::fvec3 color;
     glm::fvec2 uv;
 
-    std::array<float, 8> weights;
+    std::array<float, 8> weights = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct GxxMesh {
@@ -42,11 +42,12 @@ struct GxxMesh {
 };
 
 struct GxxTexture {
-    uint32_t id;
+    uint32_t ge_command_offs;
     std::string name;
 };
 
-struct GxxBone {
+struct GxxNode {
+    uint32_t ge_matrix_offs;
     std::string name;
 };
 
@@ -73,6 +74,7 @@ struct GxxDrawlist {
  */
 struct GxxAnimationFrame {
     std::vector<GxxDrawlist> list;
+    std::vector<glm::fmat4x4> node_matrices;
 };
 
 struct GxxAnimation {
@@ -86,7 +88,7 @@ struct GxxAnimation {
 
 struct GxxModel {
     std::vector<GxxTexture> textures;
-    std::vector<GxxBone> bones;
+    std::vector<GxxNode> nodes;
     std::vector<GxxMesh> meshes;
     std::vector<GxxAnimation> animations;
 };

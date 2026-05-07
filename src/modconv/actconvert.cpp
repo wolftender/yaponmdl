@@ -1,0 +1,345 @@
+#include <queue>
+#include <variant>
+
+#include <fmt/format.h>
+#include <stb_image/stb_image.h>
+
+#include "common/common.hpp"
+#include "modconv/modelconvert.hpp"
+
+namespace {
+
+class ConvertConsoleLogger final : public conv::IConvertLogger {
+public:
+    auto Log(std::string_view log_message) const -> void override {
+        fmt::println("[libconv console log] {}", log_message);
+    }
+};
+
+auto MakeErrorBitmap() -> const conv::ITextureRepository::Bitmap {
+    conv::ITextureRepository::Bitmap bitmap;
+    bitmap.width = 4;
+    bitmap.height = 4;
+
+    bitmap.plane.resize(bitmap.width * bitmap.height * 4);
+    for (uint32_t i = 0; i < bitmap.width * bitmap.height; ++i) {
+        const auto x = i % bitmap.width;
+        const auto y = i / bitmap.width;
+        const auto gx = x / 2;
+        const auto gy = y / 2;
+        const uint8_t v = 255 * ((gx + gy) % 2);
+
+        bitmap.plane[4 * i + 0] = v;
+        bitmap.plane[4 * i + 1] = 0;
+        bitmap.plane[4 * i + 2] = v;
+        bitmap.plane[4 * i + 3] = 255;
+    }
+
+    return bitmap;
+}
+
+} // namespace
+
+namespace conv {
+
+inline auto ConvertInterpolation(act::AnimationInterpolationMode mode) -> render::Model::Animation::InterpolationMode {
+    switch (mode) {
+    case act::AnimationInterpolationMode::eStep:
+        return render::Model::Animation::InterpolationMode::eStep;
+    case act::AnimationInterpolationMode::eLinear:
+        return render::Model::Animation::InterpolationMode::eLinear;
+    case act::AnimationInterpolationMode::eCubicSpline:
+        return render::Model::Animation::InterpolationMode::eCubic;
+    default:
+        return render::Model::Animation::InterpolationMode::eStep;
+    }
+}
+
+auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const IConvertLogger *logger)
+    -> std::unique_ptr<render::Model> {
+    ConvertConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    auto model = std::make_unique<render::Model>(device);
+
+    const auto num_nodes = act_model.nodes.size();
+    const auto num_textures = act_model.textures.size();
+    const auto num_materials = act_model.materials.size();
+    const auto num_submeshes = act_model.submeshes.size();
+
+    using AnyMeshId = std::variant<render::Model::MeshId, render::Model::AnimatedMeshId, std::monostate>;
+
+    std::vector<std::optional<render::Model::NodeId>> node_map;
+    std::vector<std::optional<render::Model::TextureId>> texture_map;
+    std::vector<std::optional<render::Model::MaterialId>> material_map;
+    std::vector<AnyMeshId> submesh_map;
+
+    node_map.resize(num_nodes);
+    texture_map.resize(num_textures);
+    material_map.resize(num_materials);
+    submesh_map.resize(num_submeshes, std::monostate{});
+
+    for (uint32_t act_texture_id = 0; act_texture_id < num_textures; ++act_texture_id) {
+        const auto &act_texture = act_model.textures[act_texture_id];
+        const auto &act_image = act_model.images[act_texture.image_id];
+
+        std::vector<uint8_t> bitmap_buffer;
+
+        const uint8_t *input_buffer_ptr = act_image.buffer.data();
+        const auto input_buffer_size = static_cast<int>(act_image.buffer.size());
+        int width = 0, height = 0, components = 0;
+
+        int res = stbi_info_from_memory(input_buffer_ptr, input_buffer_size, &width, &height, &components);
+        if (res) {
+            auto img = stbi_load_from_memory(input_buffer_ptr, input_buffer_size, &width, &height, &components, 4);
+            bitmap_buffer.resize(width * height * 4);
+
+            ::memcpy(bitmap_buffer.data(), img, width * height * 4 * sizeof(uint8_t));
+            stbi_image_free(img);
+
+            auto texture_id =
+                model->AddRgbaTexture(static_cast<uint32_t>(width), static_cast<uint32_t>(height), bitmap_buffer);
+            texture_map[act_texture_id] = texture_id;
+        } else {
+            logger->Log(fmt::format("act image {} is invalid", act_texture.image_id));
+
+            const auto backup_image = MakeErrorBitmap();
+            auto texture_id = model->AddRgbaTexture(backup_image.width, backup_image.height, backup_image.plane);
+
+            texture_map[act_texture_id] = texture_id;
+        }
+    }
+
+    for (uint32_t act_material_id = 0; act_material_id < num_materials; ++act_material_id) {
+        const auto &act_material = act_model.materials[act_material_id];
+        render::Model::Material::Description desc;
+
+        desc.diffuse =
+            act_material.albedo_map_id.has_value() ? texture_map[act_material.albedo_map_id.value()] : std::nullopt;
+        desc.normal =
+            act_material.normal_map_id.has_value() ? texture_map[act_material.normal_map_id.value()] : std::nullopt;
+
+        auto material_id = model->AddMaterial(desc);
+        material_map[act_material_id] = material_id;
+    }
+
+    // node initialization
+    std::queue<uint32_t> node_queue;
+    for (uint32_t id = 0; id < num_nodes; ++id) {
+        node_queue.push(id);
+    }
+
+    std::vector<int> nodes_with_meshes;
+
+    for (uint32_t iter = 0; !node_queue.empty() && iter < num_nodes * num_nodes; ++iter) {
+        auto act_node_id = node_queue.front();
+        node_queue.pop();
+
+        const auto &act_node = act_model.nodes[act_node_id];
+        auto parent_id = model->GetRoot();
+
+        if (act_node.parent_id.has_value()) {
+            const auto act_parent_id = act_node.parent_id.value();
+            if (!node_map[act_parent_id].has_value()) {
+                node_queue.push(act_node_id);
+                continue;
+            }
+
+            parent_id = node_map[act_parent_id].value();
+        }
+
+        const auto node_id = model->AddNode(parent_id, fmt::format("act_node_{}", act_node_id));
+        if (!node_id.has_value()) {
+            throw std::runtime_error{"failed to allocate node"};
+        }
+
+        node_map[act_node_id] = node_id;
+        auto node = model->GetNode(node_id.value());
+
+        node->SetTranslation(act_node.translation);
+        node->SetRotation(act_node.rotation);
+        node->SetScale(act_node.scale);
+
+        if (act_node.mesh_id.has_value()) {
+            nodes_with_meshes.push_back(act_node_id);
+        }
+    }
+
+    if (!node_queue.empty()) {
+        throw std::runtime_error{"act model has invalid topology"};
+    }
+
+    for (const auto act_node_id : nodes_with_meshes) {
+        const auto &act_node = act_model.nodes[act_node_id];
+        const auto &act_mesh = act_model.meshes[act_node.mesh_id.value()];
+
+        auto node_id = node_map[act_node_id];
+        auto &node = *model->GetNode(node_id.value());
+
+        std::optional<render::Model::SkinId> skin_id = [&]() -> std::optional<render::Model::SkinId> {
+            if (!act_node.skin_id.has_value()) {
+                return std::nullopt;
+            }
+
+            const auto &act_skin = act_model.skins[act_node.skin_id.value()];
+
+            render::Model::Skin skin;
+            for (const auto &act_skin_node_id : act_skin.skin_node_ids) {
+                const auto &act_skin_node = act_model.skin_nodes[act_skin_node_id];
+                if (!node_map[act_skin_node.node_id].has_value()) {
+                    return std::nullopt;
+                }
+
+                skin.AddNodeRef(node_map[act_skin_node.node_id].value(), act_skin_node.inverse_bind_matrix);
+            }
+
+            return model->AddSkin(std::move(skin));
+        }();
+
+        for (const auto act_submesh_id : act_mesh.submesh_ids) {
+            const auto &act_any_submesh = act_model.submeshes[act_submesh_id];
+            std::visit(
+                overload{
+                    [&](const act::Model::StaticSubmesh &act_submesh) {
+                std::vector<render::StaticVertex> vertices{act_submesh.vertices.size()};
+                for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
+                    vertices[i].position = act_submesh.vertices[i].position;
+                    vertices[i].normal = act_submesh.vertices[i].normal;
+                    vertices[i].tangent = act_submesh.vertices[i].tangent;
+                    vertices[i].uv = act_submesh.vertices[i].texcoord;
+                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
+                }
+
+                auto material_id = material_map[act_submesh.material];
+                if (!material_id.has_value()) {
+                    logger->Log(fmt::format("model: invalid material for act submesh {}", act_submesh_id));
+                    return;
+                }
+
+                auto mesh_id = model->AddMesh(vertices, act_submesh.indices, material_id.value());
+                submesh_map[act_submesh_id] = mesh_id.has_value() ? AnyMeshId{mesh_id.value()} : std::monostate{};
+
+                if (mesh_id.has_value()) {
+                    node.AddMesh(mesh_id.value());
+                }
+            },
+                    [&](const act::Model::RiggedSubmesh &act_submesh) {
+                // don't add animated submesh if skin is not present
+                if (!skin_id.has_value()) {
+                    return;
+                }
+
+                std::vector<render::AnimatedVertex> vertices{act_submesh.vertices.size()};
+                for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
+                    vertices[i].position = act_submesh.vertices[i].position;
+                    vertices[i].normal = act_submesh.vertices[i].normal;
+                    vertices[i].tangent = act_submesh.vertices[i].tangent;
+                    vertices[i].uv = act_submesh.vertices[i].texcoord;
+                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
+
+                    for (uint32_t w = 0; w < 4; ++w) {
+                        vertices[i].bones[w] = act_submesh.vertices[i].joints[w];
+                        vertices[i].weights[w] = act_submesh.vertices[i].weights[w];
+                    }
+                }
+
+                auto material_id = material_map[act_submesh.material];
+                if (!material_id.has_value()) {
+                    logger->Log(fmt::format("model: invalid material for act submesh {}", act_submesh_id));
+                    return;
+                }
+
+                auto mesh_id =
+                    model->AddAnimatedMesh(vertices, act_submesh.indices, material_id.value(), skin_id.value());
+                submesh_map[act_submesh_id] = mesh_id.has_value() ? AnyMeshId{mesh_id.value()} : std::monostate{};
+
+                if (mesh_id.has_value()) {
+                    node.AddAnimMesh(mesh_id.value());
+                }
+            },
+                },
+                act_any_submesh);
+        }
+    }
+
+    using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
+
+    // loading animations
+    for (uint32_t act_anim_id = 0; act_anim_id < act_model.animations.size(); ++act_anim_id) {
+        const auto &act_anim = act_model.animations[act_anim_id];
+
+        render::Model::Animation animation{fmt::format("act_anim_{}", act_anim_id)};
+        for (const auto act_channel_id : act_anim.channel_ids) {
+            const auto &act_channel = act_model.animation_channels[act_channel_id];
+            std::visit(
+                overload{
+                    [&](const act::Model::TranslationAnimationChannel &act_channel) {
+                if (!node_map[act_channel.node_id].has_value()) {
+                    return;
+                }
+
+                const auto node_id = node_map[act_channel.node_id].value();
+
+                animation.AppendNodeChannel<NodeTargetProperty::eTranslation>(node_id, [&](auto &translation_channel) {
+                    translation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        translation_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeTranslationChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
+            },
+                    [&](const act::Model::RotationAnimationChannel &act_channel) {
+                if (!node_map[act_channel.node_id].has_value()) {
+                    return;
+                }
+
+                const auto node_id = node_map[act_channel.node_id].value();
+
+                animation.AppendNodeChannel<NodeTargetProperty::eRotation>(node_id, [&](auto &rotation_channel) {
+                    rotation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        rotation_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeRotationChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
+            },
+                    [&](const act::Model::ScaleAnimationChannel &act_channel) {
+                if (!node_map[act_channel.node_id].has_value()) {
+                    return;
+                }
+
+                const auto node_id = node_map[act_channel.node_id].value();
+
+                animation.AppendNodeChannel<NodeTargetProperty::eScale>(node_id, [&](auto &scale_channel) {
+                    scale_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+
+                    for (const auto &act_keyframe : act_channel.keyframes) {
+                        scale_channel.GetKeyframes().emplace_back(
+                            render::Model::Animation::NodeScaleChannel::KeyframeType{
+                                .value = act_keyframe.value,
+                                .time = act_keyframe.time,
+                            });
+                    }
+                });
+            },
+                },
+                act_channel);
+        }
+
+        model->AddAnimation(std::move(animation));
+    }
+
+    return model;
+}
+
+} // namespace conv
