@@ -76,8 +76,8 @@ auto ModelViewer::AzimuthCameraController::SetCameraParameters() -> void {
 }
 
 ModelViewer::OrthoCameraController::OrthoCameraController() : center_{0.0f, 0.0f} {
-    camera_.SetNear(-200.0f);
-    camera_.SetFar(200.0f);
+    camera_.SetNear(-1000.0f);
+    camera_.SetFar(1000.0f);
 }
 
 auto ModelViewer::OrthoCameraController::ZoomOut() -> void {

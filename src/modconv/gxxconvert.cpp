@@ -148,6 +148,20 @@ auto ConvertGXX(
     std::vector<render::Model::MaterialId> material_map;
     std::vector<MeshData> mesh_map;
 
+    render::Model::Material::Description material_desc = {
+        .diffuse = std::nullopt,
+        .normal = std::nullopt,
+        .specular = std::nullopt,
+        .color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
+    };
+
+    const auto fallback_mat_id = model->AddMaterial(material_desc);
+    if (!fallback_mat_id.has_value()) {
+        throw std::runtime_error{"failed to allocate fallback material"};
+    }
+
+    render::Model::MaterialId fallback_material = fallback_mat_id.value();
+
     for (const auto &gxx_node : gxx_model.nodes) {
         const auto bone_id = model->AddNode(model->GetRoot(), gxx_node.name);
         if (!bone_id.has_value()) {
@@ -178,18 +192,45 @@ auto ConvertGXX(
     for (uint32_t gxx_mesh_id = 0; gxx_mesh_id < gxx_model.meshes.size(); ++gxx_mesh_id) {
         const auto &gxx_mesh = gxx_model.meshes[gxx_mesh_id];
 
-        // same mesh can be reused within a frame multiple times
-        // we would like to handle that by having multiple copies of said mesh
-        uint32_t max_reuses = 1;
+        // since gxx is a drawlist based format, it can freely match any texture with a model
+        // here, we hope that the first used texture is also the only used texture
+        // until material animations are introduced to the scene graph
+        std::optional<uint32_t> first_used_texture = std::nullopt;
+
         for (const auto &gxx_animation : gxx_model.animations) {
             for (const auto &gxx_frame : gxx_animation.frames) {
-                const uint32_t num_reuses = std::count_if(
-                    gxx_frame.list.begin(), gxx_frame.list.end(), [&](const gxx::GxxDrawlist &drawlist) -> bool {
-                    return drawlist.mesh.has_value() && drawlist.mesh == gxx_mesh_id;
-                });
-                max_reuses = std::max(max_reuses, num_reuses);
+                for (const auto &gxx_drawlist : gxx_frame.list) {
+                    if (!gxx_drawlist.mesh.has_value()) {
+                        continue;
+                    }
+
+                    if (gxx_drawlist.mesh.value() != gxx_mesh_id) {
+                        continue;
+                    }
+
+                    if (!gxx_drawlist.texture.has_value()) {
+                        continue;
+                    }
+
+                    first_used_texture = gxx_drawlist.texture.value();
+                    break;
+                }
             }
         }
+
+        const render::Model::MaterialId material = [&]() {
+            if (first_used_texture.has_value()) {
+                if (first_used_texture.value() < material_map.size()) {
+                    return material_map[first_used_texture.value()];
+                } else {
+                    logger->Log(
+                        fmt::format(
+                            "warning: invalid texture reference outsie of bounds {}", first_used_texture.value()));
+                }
+            }
+
+            return fallback_material;
+        }();
 
         if (gxx_mesh.num_weights == 0) {
             std::vector<render::StaticVertex> vertices;
@@ -209,9 +250,8 @@ auto ConvertGXX(
 
             const auto mesh_id =
                 gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
-                    ? model->AddMesh(vertices, gxx_mesh.indices, material_map.front())
-                    : model->AddMesh(
-                          vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material_map.front());
+                    ? model->AddMesh(vertices, gxx_mesh.indices, material)
+                    : model->AddMesh(vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material);
             if (!mesh_id.has_value()) {
                 throw std::runtime_error{"failed to allocate model mesh"};
             }
@@ -275,12 +315,11 @@ auto ConvertGXX(
                 throw std::runtime_error{"failed to allocate deform skin for mesh"};
             }
 
-            const auto mesh_id =
-                gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
-                    ? model->AddAnimatedMesh(vertices, gxx_mesh.indices, material_map.front(), skin_id.value())
-                    : model->AddAnimatedMesh(
-                          vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material_map.front(),
-                          skin_id.value());
+            const auto mesh_id = gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
+                                     ? model->AddAnimatedMesh(vertices, gxx_mesh.indices, material, skin_id.value())
+                                     : model->AddAnimatedMesh(
+                                           vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type),
+                                           material, skin_id.value());
             if (!mesh_id.has_value()) {
                 throw std::runtime_error{"failed to allocate model animated mesh"};
             }
