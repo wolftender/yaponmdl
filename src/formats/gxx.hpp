@@ -38,7 +38,9 @@ struct GxxMesh {
     std::vector<uint32_t> indices;
 
     GxxPrimitiveType primitive_type;
+
     uint32_t texture_id;
+    uint32_t ge_buffer_size;
 };
 
 struct GxxTexture {

@@ -522,7 +522,8 @@ private:
         }
 
         case pspgu::SceGeCommand::PRIM: {
-            const auto mesh_uid = command;
+            const uint64_t mesh_uid =
+                static_cast<uint64_t>(command) | (static_cast<uint64_t>(ge_state_.vtx_buffer_addr) << 32);
             const auto iter = mesh_cache_.find(mesh_uid);
 
             // this mesh is not initialized yet
@@ -552,7 +553,12 @@ private:
                 }
 
                 AssertSeek(reader, ge_state_.vtx_buffer_addr);
+                const auto begin_offset = reader.Position();
+
                 mesh.vertices = ReadAlignedVertexBuffer(reader, num_vertices);
+                mesh.ge_buffer_size = static_cast<uint32_t>(reader.Position() - begin_offset);
+
+                ge_state_.vtx_buffer_addr += mesh.ge_buffer_size;
 
                 gxx_model.meshes.emplace_back(std::move(mesh));
 
@@ -562,6 +568,7 @@ private:
                 ge_state_.mesh.emplace(mesh_id);
             } else {
                 ge_state_.mesh.emplace(iter->second);
+                ge_state_.vtx_buffer_addr += gxx_model.meshes[iter->second].ge_buffer_size;
             }
 
             ge_state_.mtx_unused_flag = false;
@@ -784,7 +791,7 @@ private:
     const GxxLogger &logger_;
 
     std::span<const uint8_t> buffer_;
-    std::map<uint32_t, uint32_t> mesh_cache_;
+    std::map<uint64_t, uint32_t> mesh_cache_;
     std::map<uint32_t, uint32_t> texture_cache_;
 
     // ge state
@@ -821,6 +828,8 @@ private:
 
         std::stack<uint32_t> callstack;
         uint32_t program_counter;
+
+        std::map<uint64_t, uint32_t> mesh_cache_;
     };
 
     GEState ge_state_;
