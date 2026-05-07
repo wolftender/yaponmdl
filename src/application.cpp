@@ -6,12 +6,13 @@
 
 #include "application.hpp"
 #include "hexview.hpp"
-#include "modelconv.hpp"
 
 #include "formats/gxt.hpp"
 #include "formats/gmo.hpp"
 #include "formats/act.hpp"
 #include "formats/gxx.hpp"
+
+#include "modconv/modelconvert.hpp"
 
 namespace fs = std::filesystem;
 

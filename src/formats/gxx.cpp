@@ -6,7 +6,9 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "common/binaryreader.hpp"
+
 #include "formats/gxx.hpp"
+#include "formats/gxp.hpp"
 #include "formats/pspgu.hpp"
 
 // based on gxxtool from patamodding community
@@ -128,6 +130,15 @@ public:
     }
 };
 
+class GxxGxpLogger final : public gxp::GxpLogger {
+public:
+    GxxGxpLogger(const GxxLogger &logger) : logger_{logger} {}
+    auto log(std::string_view log_message) const -> void override { logger_.log(log_message); }
+
+private:
+    const GxxLogger &logger_;
+};
+
 class GxxLoaderContext final {
 public:
     GxxLoaderContext(const GxxLogger &logger, std::span<const uint8_t> buffer) : logger_{logger}, buffer_{buffer} {
@@ -149,93 +160,150 @@ public:
     }
 
     auto LoadModel() -> GxxModel {
+        GxxGxpLogger gxp_logger{logger_};
+        gxp::SceGxpFile gxp_file = gxp::LoadFromMemory(buffer_, &gxp_logger);
+
         util::bytes::BinaryReader reader{buffer_};
         GxxModel gxx_model;
-        const auto model_section_offset = AssertReadAt<uint32_t>(reader, 0x10); // header length
-
-        // clang-format off
-        const auto texture_section_offset   = AssertReadAt<uint32_t>(reader, model_section_offset + 0x08);
-        const auto num_textures             = AssertReadAt<uint32_t>(reader, model_section_offset + 0x0c);
-        const auto anim_section_offset      = AssertReadAt<uint32_t>(reader, model_section_offset + 0x10);
-        const auto num_animations           = AssertReadAt<uint32_t>(reader, model_section_offset + 0x14);
-        const auto bone_section_offset      = AssertReadAt<uint32_t>(reader, model_section_offset + 0x18);
-        const auto num_bones                = AssertReadAt<uint32_t>(reader, model_section_offset + 0x1c);
-        // clang-format on
 
         logger_.log(
             fmt::format(
                 "gxx file stats:\n"
-                "\ttexture offset: {:#010x}\n"
-                "\tanim offset: {:#010x}\n"
-                "\tbone offset: {:#010x}\n"
-                "\tnum textures: {}\n"
-                "\tnum anims: {}\n"
-                "\tnum bones: {}\n",
-                texture_section_offset, anim_section_offset, bone_section_offset, num_textures, num_animations,
-                num_bones));
+                "\tnum_children: {}\n"
+                "\tnum_nodes: {}\n"
+                "\tnum_motions: {}\n",
+                gxp_file.root_object.num_children, gxp_file.root_object.num_nodes, gxp_file.root_object.num_motions));
 
-        for (uint32_t gxx_texture_id = 0; gxx_texture_id < num_textures; ++gxx_texture_id) {
-            const auto texture_entry_offset = texture_section_offset + (0x04 * gxx_texture_id);
-            const auto texture_data_offset = AssertReadAt<uint32_t>(reader, texture_entry_offset);
+        const auto &root_object = gxp_file.root_object;
+        for (uint32_t gxx_child_id = 0; gxx_child_id < root_object.num_children; ++gxx_child_id) {
+            const auto &child_object = root_object.children[gxx_child_id];
+            // how textures are supported by gxx:
+            // the main object has child objects, type 10 signifies they are a texture
+            // basically, as with gxt, a texture has motion frames with sampler setup
+            // but they also have a name matching the texture, here we will skip the sampler
+            // setup code and just assume the texture is loaded from the file with name
+            // mathcing the subobject, this is why JUMP instruction is "texture load" actually
 
-            const auto texture_name_offset = AssertReadAt<uint32_t>(reader, texture_data_offset + 0x04);
-            const auto texture_id_ptr_offset = AssertReadAt<uint32_t>(reader, texture_data_offset + 0x10);
+            if (child_object.type != 10) {
+                logger_.log(
+                    fmt::format("warning: gxx has a child object of type {} that will be skipped", child_object.type));
+                continue;
+            }
 
-            const auto texture_name_buffer = AssertReadStringAt(reader, texture_name_offset);
-            const auto texture_id_offset = AssertReadAt<uint32_t>(reader, texture_id_ptr_offset);
-            const auto texture_id = AssertReadAt<uint32_t>(reader, texture_id_offset);
+            if (child_object.num_motions != 1) {
+                // TODO: completely theoretically, there is a VALID configuration here we can support
+                // suppose the texture has N frames, each frame has its own command buffer offset,
+                // actually, nothing is stopping the GXX GE command section to just jump to any texture here :p
+                // this is unsupported as I have not found a model that uses such configuration yet
+                logger_.log(
+                    fmt::format(
+                        "warning: gxx has a child object that is a texture and has {} motions - unsupported "
+                        "configuration",
+                        child_object.num_motions));
+                continue;
+            }
 
-            gxx_model.textures.emplace_back(
-                GxxTexture{texture_id, std::string{texture_name_buffer.begin(), texture_name_buffer.end()}});
+            const auto &texture_frame = child_object.motions.front();
+            if (texture_frame.num_frames != 1) {
+                logger_.log(
+                    fmt::format(
+                        "warning: gxx has a child object that is a texture and has {} frames - unsupported "
+                        "configuration",
+                        texture_frame.num_frames));
+                continue;
+            }
 
-            const auto id = static_cast<uint32_t>(gxx_model.textures.size() - 1);
-            texture_cache_.emplace(std::make_pair(texture_id, id));
+            const auto texture_command_offs = texture_frame.frames.front().ge_buffer_offs;
+            gxx_model.textures.emplace_back(GxxTexture{texture_command_offs, child_object.name});
+
+            texture_cache_.emplace(
+                std::make_pair(texture_command_offs, static_cast<uint32_t>(gxx_model.textures.size() - 1)));
+
+            logger_.log(
+                fmt::format(
+                    "gxx references a child texture {} with command buffer at offset {:#010x}", child_object.name,
+                    texture_command_offs));
         }
 
-        for (uint32_t gxx_bone_id = 0; gxx_bone_id < num_bones; ++gxx_bone_id) {
-            const auto bone_entry_ofset = bone_section_offset + (0x08 * gxx_bone_id);
-            const auto bone_name_offset = AssertReadAt<uint32_t>(reader, bone_entry_ofset + 0x04);
-            const auto bone_name_buffer = AssertReadStringAt(reader, bone_name_offset);
+        for (const auto &gxx_node : root_object.nodes) {
+            GxxNode node;
+            node.name = gxx_node.name;
+            node.ge_matrix_offs = gxx_node.matrix_offs;
 
-            gxx_model.bones.emplace_back(GxxBone{std::string{bone_name_buffer.begin(), bone_name_buffer.end()}});
+            logger_.log(
+                fmt::format("gxx node with name={} and GE matrix offset {:#010x}", node.name, node.ge_matrix_offs));
+
+            gxx_model.nodes.emplace_back(node);
         }
 
-        for (uint32_t gxx_anim_id = 0; gxx_anim_id < num_animations; ++gxx_anim_id) {
-            const auto anim_entry_offset = anim_section_offset + (0x10 * gxx_anim_id);
-            const auto anim_data_offset = AssertReadAt<uint32_t>(reader, anim_entry_offset);
-            const auto anim_num_frames = AssertReadAt<uint32_t>(reader, anim_entry_offset + 0x04);
-            const auto anim_framerate = AssertReadAt<float>(reader, anim_entry_offset + 0x08);
-            const auto anim_frameloop = AssertReadAt<float>(reader, anim_entry_offset + 0x0c);
-            const auto anim_params_offset = AssertReadAt<uint32_t>(reader, anim_data_offset);
-            const auto anim_data_size = AssertReadAt<uint32_t>(reader, anim_params_offset - 0x38);
-
+        for (const auto &gxx_motion : root_object.motions) {
             GxxAnimation animation;
-            animation.name = fmt::format("gxx_{:x}", anim_entry_offset);
-            animation.num_frames = anim_num_frames;
-            animation.frameloop = anim_frameloop;
-            animation.framerate = anim_framerate;
+            animation.name = fmt::format("gxx_{:x}", gxx_motion.offset);
+            animation.framerate = gxx_motion.framerate;
+            animation.num_frames = gxx_motion.num_frames;
 
             for (uint32_t gxx_frame_id = 0; gxx_frame_id < animation.num_frames; ++gxx_frame_id) {
-                const auto anim_frame_offset = AssertReadAt<uint32_t>(reader, anim_data_offset + (0x04 * gxx_frame_id));
-                const auto end_counter = anim_frame_offset + anim_data_size;
+                const auto &gxx_frame = gxx_motion.frames[gxx_frame_id];
 
-                ge_state_.program_counter = anim_frame_offset;
+                const auto ge_buffer_offset = gxx_frame.ge_buffer_offs;
+                const auto ge_buffer_capacity = gxx_frame.ge_buffer_size;
+                const auto ge_end_offset = ge_buffer_offset + ge_buffer_capacity;
 
+                ge_state_.program_counter = ge_buffer_offset;
                 logger_.log(
-                    fmt::format("BEGIN FRAME: anim {} frame {} end {:#010x}", gxx_anim_id, gxx_frame_id, end_counter));
+                    fmt::format(
+                        "BEGIN FRAME: anim {} frame {} buffer {:#010x} ~ {:#010x}", animation.name, gxx_frame_id,
+                        ge_buffer_offset, ge_end_offset));
 
                 GxxAnimationFrame frame;
-
-                while (ge_state_.program_counter < end_counter) {
+                while (ge_state_.program_counter < ge_end_offset) {
                     const auto res = ParseAnimCommand(gxx_model, frame, reader);
+
+                    // if last return was reached, return the control
                     if (res == ParseCommandResult::eComplete) {
                         break;
                     }
                 }
 
+                // but its not over yet
+                // we need to fetch the matrices now for the bones using their offsets
+                const auto num_nodes = gxx_model.nodes.size();
+                frame.node_matrices.reserve(num_nodes);
+
+                for (uint32_t gxx_node_idx = 0; gxx_node_idx < num_nodes; ++gxx_node_idx) {
+                    const auto &gxx_node = gxx_model.nodes[gxx_node_idx];
+
+                    AssertSeek(reader, ge_buffer_offset + gxx_node.ge_matrix_offs);
+                    std::array<float, 16> matrix_values;
+                    std::fill(matrix_values.begin(), matrix_values.end(), 0.0f);
+                    for (uint32_t i = 0; i < 4; ++i) {
+                        for (uint32_t j = 0; j < 3; ++j) {
+                            const uint32_t ge_command = AssertRead<uint32_t>(reader);
+                            const uint32_t ge_opcode = (0xff000000 & ge_command) >> 24;
+                            const uint32_t ge_param = (0x00ffffff & ge_command);
+
+                            if (ge_opcode != pspgu::SceGeCommand::WORLD_MATRIX_DATA) {
+                                logger_.log(
+                                    fmt::format(
+                                        "warning: cannot read bone {} ({}) matrix in motion {} frame {} at offset "
+                                        "{:#010x}, ge opcode is {:#010x}",
+                                        gxx_node.name, gxx_node_idx, animation.name, gxx_frame_id,
+                                        gxx_node.ge_matrix_offs + i * sizeof(uint32_t), ge_command));
+                                break;
+                            }
+
+                            matrix_values[j + i * 4] = util::bytes::F24ToF32(ge_param);
+                        }
+                    }
+
+                    matrix_values[3 + 3 * 4] = 1.0f; // no perspective
+                    frame.node_matrices.emplace_back(glm::make_mat4(matrix_values.data()));
+                }
+
                 if (frame.list.empty()) {
                     logger_.log(
-                        fmt::format("warning: anim {} frame {} has no drawlists submitted", gxx_anim_id, gxx_frame_id));
+                        fmt::format(
+                            "warning: anim {} frame {} has no drawlists submitted", animation.name, gxx_frame_id));
                 }
 
                 // all commands were parsed, now we can combine them into a "frame"
@@ -364,6 +432,7 @@ private:
                 }
             }
 
+            matrix_values[3 + 3 * 4] = 1.0f; // no perspective
             ge_state_.bone_matrix[bone_mat_idx] = glm::make_mat4(matrix_values.data());
             break;
         }
@@ -396,6 +465,7 @@ private:
                 }
             }
 
+            matrix_values[3 + 3 * 4] = 1.0f; // no perspective
             ge_state_.world_matrix = glm::make_mat4(matrix_values.data());
             ge_state_.mtx_unused_flag = true;
 
@@ -452,7 +522,8 @@ private:
         }
 
         case pspgu::SceGeCommand::PRIM: {
-            const auto mesh_uid = command;
+            const uint64_t mesh_uid =
+                static_cast<uint64_t>(command) | (static_cast<uint64_t>(ge_state_.vtx_buffer_addr) << 32);
             const auto iter = mesh_cache_.find(mesh_uid);
 
             // this mesh is not initialized yet
@@ -482,7 +553,12 @@ private:
                 }
 
                 AssertSeek(reader, ge_state_.vtx_buffer_addr);
+                const auto begin_offset = reader.Position();
+
                 mesh.vertices = ReadAlignedVertexBuffer(reader, num_vertices);
+                mesh.ge_buffer_size = static_cast<uint32_t>(reader.Position() - begin_offset);
+
+                ge_state_.vtx_buffer_addr += mesh.ge_buffer_size;
 
                 gxx_model.meshes.emplace_back(std::move(mesh));
 
@@ -492,6 +568,7 @@ private:
                 ge_state_.mesh.emplace(mesh_id);
             } else {
                 ge_state_.mesh.emplace(iter->second);
+                ge_state_.vtx_buffer_addr += gxx_model.meshes[iter->second].ge_buffer_size;
             }
 
             ge_state_.mtx_unused_flag = false;
@@ -714,7 +791,7 @@ private:
     const GxxLogger &logger_;
 
     std::span<const uint8_t> buffer_;
-    std::map<uint32_t, uint32_t> mesh_cache_;
+    std::map<uint64_t, uint32_t> mesh_cache_;
     std::map<uint32_t, uint32_t> texture_cache_;
 
     // ge state
@@ -751,6 +828,8 @@ private:
 
         std::stack<uint32_t> callstack;
         uint32_t program_counter;
+
+        std::map<uint64_t, uint32_t> mesh_cache_;
     };
 
     GEState ge_state_;

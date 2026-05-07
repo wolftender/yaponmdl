@@ -95,7 +95,6 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/textureview.cpp
     ${PROGRAM_SRC_DIR}/resourcestore.cpp
     ${PROGRAM_SRC_DIR}/modelview.cpp
-    ${PROGRAM_SRC_DIR}/modelconv.cpp
     ${PROGRAM_SRC_DIR}/modeldisplay.cpp
     ${PROGRAM_SRC_DIR}/constsplitter.cpp
     ${PROGRAM_SRC_DIR}/common/binaryreader.cpp
@@ -103,6 +102,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/formats/act.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
+    ${PROGRAM_SRC_DIR}/formats/gxp.cpp
     ${PROGRAM_SRC_DIR}/formats/gxx.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/graphics/shader.cpp
@@ -113,6 +113,9 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/render/text.cpp
     ${PROGRAM_SRC_DIR}/render/device.cpp
     ${PROGRAM_SRC_DIR}/render/camera.cpp
+    ${PROGRAM_SRC_DIR}/modconv/actconvert.cpp
+    ${PROGRAM_SRC_DIR}/modconv/gmoconvert.cpp
+    ${PROGRAM_SRC_DIR}/modconv/gxxconvert.cpp
 )
 
 if(WIN32)
