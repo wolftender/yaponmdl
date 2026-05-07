@@ -103,6 +103,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/formats/act.cpp
     ${PROGRAM_SRC_DIR}/formats/gmo.cpp
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
+    ${PROGRAM_SRC_DIR}/formats/gxp.cpp
     ${PROGRAM_SRC_DIR}/formats/gxx.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/graphics/shader.cpp
