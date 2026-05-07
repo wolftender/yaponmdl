@@ -1,6 +1,7 @@
 #include <fstream>
 #include <filesystem>
 
+#include <wx/aboutdlg.h>
 #include <wx/file.h>
 #include <wx/dirdlg.h>
 #include <wx/filename.h>
@@ -208,9 +209,17 @@ auto ModelBrowserFrame::OnExit([[maybe_unused]] wxCommandEvent &event) -> void {
 }
 
 auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void {
-    wxMessageBox(
-        "Yapon Model Viewer made by wolftender (https://github.com/wolftender)", "About Model viewer...",
-        wxOK | wxICON_INFORMATION);
+    wxAboutDialogInfo about_info;
+    about_info.SetName("Yapon Model Viewer");
+    about_info.SetVersion(wxString::Format("%s (compiled %s)", GIT_COMMIT_ID, __DATE__));
+    about_info.SetDescription(
+        "Patapon GXX and GMO model viewer, made by rekjn/wolftender.\nSpecial thanks to owocek.\nSpecial thanks to "
+        "Patamodding Discord community.");
+    about_info.SetCopyright("Copyright by rekjn (c) 2026");
+    about_info.SetWebSite("https://github.com/wolftender");
+    about_info.AddDeveloper("wolftender (https://github.com/wolftender)");
+
+    wxAboutBox(about_info);
 }
 
 auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {}
