@@ -19,6 +19,7 @@ public:
         const wxSize &size = wxDefaultSize, long style = wxDIRCTRL_3D_INTERNAL, const wxString &filter = wxEmptyString,
         int defaultFilter = 0, const wxString &name = wxTreeCtrlNameStr);
 
+    auto SetRootDirectory(const wxString &root_directory) -> void;
     virtual auto SetupSections() -> void;
 
 private:
@@ -30,6 +31,7 @@ public:
     ModelBrowserFrame();
 
 private:
+    auto SetWorkingDirectory(const wxString &working_dir) -> void;
     auto CloseCurrentFile() -> void;
 
     auto OnExit(wxCommandEvent &event) -> void;

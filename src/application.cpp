@@ -2,6 +2,7 @@
 #include <filesystem>
 
 #include <wx/file.h>
+#include <wx/dirdlg.h>
 #include <wx/filename.h>
 
 #include "application.hpp"
@@ -33,6 +34,23 @@ DirectoryViewControl::DirectoryViewControl(
     Create(parent, id, dir, pos, size, style, filter, defaultFilter, name);
 }
 
+auto DirectoryViewControl::SetRootDirectory(const wxString &root_directory) -> void {
+    root_ = root_directory;
+    ReCreateTree();
+
+    auto *tree = GetTreeCtrl();
+    if (!tree) {
+        return;
+    }
+
+    wxTreeItemIdValue cookie;
+    const auto child = tree->GetFirstChild(GetRootId(), cookie);
+
+    if (child.IsOk()) {
+        tree->Expand(child);
+    }
+}
+
 auto DirectoryViewControl::SetupSections() -> void {
     if (root_.IsEmpty()) {
         wxGenericDirCtrl::SetupSections();
@@ -58,8 +76,12 @@ auto ModelBrowserApplication::OnInit() -> bool {
 
 auto ModelBrowserApplication::OnExit() -> int32_t { return EXIT_SUCCESS; }
 
+static auto MakeWindowTitle(const wxString &working_dir) -> wxString {
+    return wxString{"Model browser - "} + working_dir;
+}
+
 ModelBrowserFrame::ModelBrowserFrame()
-    : wxFrame{nullptr,           wxID_ANY,         "Model browser - " + wxGetCwd(),
+    : wxFrame{nullptr,           wxID_ANY,         MakeWindowTitle(wxGetCwd()),
               wxDefaultPosition, wxSize{640, 480}, wxDEFAULT_FRAME_STYLE} {
     SetMinSize(wxSize{640, 480});
 
@@ -134,6 +156,12 @@ ModelBrowserFrame::ModelBrowserFrame()
     notebook_right_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &ModelBrowserFrame::OnPageChanged, this);
 }
 
+auto ModelBrowserFrame::SetWorkingDirectory(const wxString &working_dir) -> void {
+    working_dir_ = working_dir;
+    SetTitle(MakeWindowTitle(working_dir_));
+    dir_control_->SetRootDirectory(working_dir_);
+}
+
 auto ModelBrowserFrame::CloseCurrentFile() -> void {
     EnableViewerOptions(false);
 
@@ -186,7 +214,16 @@ auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void 
 }
 
 auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {}
-auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {}
+
+auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {
+    wxDirDialog *dir_select = new wxDirDialog(this, wxASCII_STR(wxDirSelectorPromptStr), working_dir_);
+    if (dir_select->ShowModal() == wxID_OK) {
+        SetWorkingDirectory(dir_select->GetPath());
+    }
+
+    dir_select->Destroy();
+}
+
 auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
 class GmoWxLogger : public gmo::GmoLogger {
