@@ -2,6 +2,7 @@
 #include <wx/wx.h>
 #include <wx/app.h>
 #include <wx/event.h>
+#include <wx/file.h>
 #include <wx/dirctrl.h>
 #include <wx/splitter.h>
 #include <wx/notebook.h>
@@ -33,6 +34,7 @@ public:
 private:
     auto SetWorkingDirectory(const wxString &working_dir) -> void;
     auto CloseCurrentFile() -> void;
+    auto OpenNewFile(const wxString &full_path) -> void;
 
     auto OnExit(wxCommandEvent &event) -> void;
     auto OnAbout(wxCommandEvent &event) -> void;

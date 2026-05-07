@@ -2,7 +2,6 @@
 #include <filesystem>
 
 #include <wx/aboutdlg.h>
-#include <wx/file.h>
 #include <wx/dirdlg.h>
 #include <wx/filename.h>
 
@@ -225,7 +224,14 @@ auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void 
     wxAboutBox(about_info);
 }
 
-auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {}
+auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {
+    wxFileDialog *file_select = new wxFileDialog(this, wxASCII_STR(wxFileSelectorPromptStr), working_dir_);
+    if (file_select->ShowModal() == wxID_OK) {
+        OpenNewFile(file_select->GetPath());
+    }
+
+    file_select->Destroy();
+}
 
 auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {
     wxDirDialog *dir_select = new wxDirDialog(this, wxASCII_STR(wxDirSelectorPromptStr), working_dir_);
@@ -467,8 +473,12 @@ private:
 
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
+    OpenNewFile(full_path);
+}
 
+auto ModelBrowserFrame::OpenNewFile(const wxString &full_path) -> void {
     wxFile fs{full_path, wxFile::read};
+
     if (fs.Error()) {
         wxMessageBox(
             wxString::Format("Cannot open file %s (%s)", full_path, wxSysErrorMsg(fs.GetLastError())),
