@@ -96,7 +96,9 @@ private:
 
 class OrthoCamera : public hal::ICamera {
 public:
-    OrthoCamera() : center_{0.0f, 0.0f, 0.0f}, size_{2.0f, 2.0f}, near_{-1.0f}, far_{1.0f} {}
+    OrthoCamera()
+        : center_{0.0f, 0.0f, 0.0f}, size_{2.0f, 2.0f}, near_{-1.0f}, far_{1.0f}, dirty_bit_view_{true},
+          dirty_bit_proj_{true} {}
 
     auto GetCenter() const -> const glm::fvec3 & { return center_; }
     auto GetSize() const -> const glm::fvec2 & { return size_; }

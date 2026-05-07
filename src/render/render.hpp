@@ -27,13 +27,13 @@ struct TexturedVertex {
 };
 
 struct ModelVertex {
-    glm::fvec3 position;
-    glm::fvec2 uv;
-    glm::fvec3 color;
-    glm::fvec3 normal;
-    glm::fvec4 tangent;
-    float weights[8];
-    uint32_t bones[8];
+    glm::fvec3 position = glm::fvec3{0.0f, 0.0f, 0.0f};
+    glm::fvec2 uv = glm::fvec2{0.0f, 0.0f};
+    glm::fvec3 color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+    glm::fvec3 normal = glm::fvec3{0.0f, 0.0f, 0.0f};
+    glm::fvec4 tangent = glm::fvec4{0.0f, 0.0f, 0.0f, 0.0f};
+    float weights[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    uint32_t bones[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     static auto GetLayout() -> std::span<const gl::LayoutElement> {
         static constexpr std::array<gl::LayoutElement, 9> kLayout{
