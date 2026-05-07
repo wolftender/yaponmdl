@@ -16,6 +16,7 @@ TextureViewer::TextureViewer(wxWindow *parent, const wxGLAttributes &attributes,
     : GLView{parent, attributes}, gxt_buffer_{gxt_buffer} {
     Bind(wxEVT_IDLE, &TextureViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &TextureViewer::OnMouseScroll, this);
+    Bind(wxEVT_MOTION, &TextureViewer::OnMouseMotion, this);
 }
 
 auto TextureViewer::ZoomIn() -> void {
@@ -28,7 +29,10 @@ auto TextureViewer::ZoomOut() -> void {
     ClampZoom();
 }
 
-auto TextureViewer::ResetView() -> void { zoom_ = 1.0f; }
+auto TextureViewer::ResetView() -> void {
+    zoom_ = 1.0f;
+    center_ = {0.0f, 0.0f};
+}
 
 auto TextureViewer::OnInitializeGL() -> void {
     GL_IMPLEMENTATION_INTERNAL;
@@ -114,7 +118,10 @@ auto TextureViewer::OnRender() -> void {
     GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 
     const glm::fmat4x4 identity = glm::fmat4x4{1.0f};
-    const auto aspect = static_cast<float>(current_size.x) / static_cast<float>(current_size.y);
+
+    const auto fwidth = static_cast<float>(current_size.x);
+    const auto fheight = static_cast<float>(current_size.y);
+    const auto aspect = fwidth / fheight;
     const auto tex_aspect = static_cast<float>(texture_->GetWidth()) / static_cast<float>(texture_->GetHeight());
 
     shader_background_->Use([&](const gl::ShaderProgram::Context &program_context) {
@@ -131,7 +138,7 @@ auto TextureViewer::OnRender() -> void {
         1.0f / aspect * zoom_, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f * zoom_ / tex_aspect, 0.0f, 0.0f,
         0.0f , 0.0f, 1.0f, 0.0f,
-        0.0f , 0.0f, 0.0f, 1.0f,
+        2.0f * center_.x / fwidth, 2.0f * center_.y /fheight, 0.0f, 1.0f,
     };
     // clang-format on
 
@@ -150,6 +157,25 @@ auto TextureViewer::OnMouseScroll(wxMouseEvent &event) -> void {
     zoom_ = zoom_ + (delta * 0.05f);
 
     ClampZoom();
+}
+
+auto TextureViewer::OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {
+    glm::ivec2 current_mouse_position;
+    event.GetPosition(&current_mouse_position.x, &current_mouse_position.y);
+
+    if (event.Dragging() && event.LeftIsDown()) {
+        if (!prev_mouse_pos_.has_value()) {
+            prev_mouse_pos_ = current_mouse_position;
+            return;
+        }
+
+        const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
+        prev_mouse_pos_ = current_mouse_position;
+        center_ = center_ - glm::fvec2{-static_cast<float>(delta_position.x), static_cast<float>(delta_position.y)};
+
+    } else {
+        prev_mouse_pos_ = std::nullopt;
+    }
 }
 
 auto TextureViewer::ClampZoom() -> void { zoom_ = glm::clamp(zoom_, 0.2f, 10.0f); }

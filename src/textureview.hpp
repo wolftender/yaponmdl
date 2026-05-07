@@ -38,6 +38,7 @@ protected:
 
     auto OnIdle(wxIdleEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
+    auto OnMouseMotion(wxMouseEvent &event) -> void;
     auto ClampZoom() -> void;
 
 private:
@@ -49,6 +50,9 @@ private:
     };
 
     float zoom_ = 1.0f;
+    glm::fvec2 center_ = glm::fvec2{0.0f};
+    std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
+
     std::span<const uint8_t> gxt_buffer_;
     std::optional<gl::ShaderProgram> shader_texture_;
     std::optional<gl::ShaderProgram> shader_background_;
