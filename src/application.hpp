@@ -2,6 +2,7 @@
 #include <wx/wx.h>
 #include <wx/app.h>
 #include <wx/event.h>
+#include <wx/file.h>
 #include <wx/dirctrl.h>
 #include <wx/splitter.h>
 #include <wx/notebook.h>
@@ -19,6 +20,7 @@ public:
         const wxSize &size = wxDefaultSize, long style = wxDIRCTRL_3D_INTERNAL, const wxString &filter = wxEmptyString,
         int defaultFilter = 0, const wxString &name = wxTreeCtrlNameStr);
 
+    auto SetRootDirectory(const wxString &root_directory) -> void;
     virtual auto SetupSections() -> void;
 
 private:
@@ -30,7 +32,9 @@ public:
     ModelBrowserFrame();
 
 private:
+    auto SetWorkingDirectory(const wxString &working_dir) -> void;
     auto CloseCurrentFile() -> void;
+    auto OpenNewFile(const wxString &full_path) -> void;
 
     auto OnExit(wxCommandEvent &event) -> void;
     auto OnAbout(wxCommandEvent &event) -> void;
@@ -42,6 +46,10 @@ private:
 
     auto OnFileSelected(wxCommandEvent &event) -> void;
     auto OnPageChanged(wxBookCtrlEvent &event) -> void;
+
+    auto OnZoomOut(wxCommandEvent &event) -> void;
+    auto OnZoomIn(wxCommandEvent &event) -> void;
+    auto OnResetView(wxCommandEvent &event) -> void;
 
     auto EnableViewerOptions(bool enabled) -> void;
 

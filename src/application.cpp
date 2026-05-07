@@ -1,7 +1,8 @@
 #include <fstream>
 #include <filesystem>
 
-#include <wx/file.h>
+#include <wx/aboutdlg.h>
+#include <wx/dirdlg.h>
 #include <wx/filename.h>
 
 #include "application.hpp"
@@ -33,6 +34,23 @@ DirectoryViewControl::DirectoryViewControl(
     Create(parent, id, dir, pos, size, style, filter, defaultFilter, name);
 }
 
+auto DirectoryViewControl::SetRootDirectory(const wxString &root_directory) -> void {
+    root_ = root_directory;
+    ReCreateTree();
+
+    auto *tree = GetTreeCtrl();
+    if (!tree) {
+        return;
+    }
+
+    wxTreeItemIdValue cookie;
+    const auto child = tree->GetFirstChild(GetRootId(), cookie);
+
+    if (child.IsOk()) {
+        tree->Expand(child);
+    }
+}
+
 auto DirectoryViewControl::SetupSections() -> void {
     if (root_.IsEmpty()) {
         wxGenericDirCtrl::SetupSections();
@@ -58,8 +76,12 @@ auto ModelBrowserApplication::OnInit() -> bool {
 
 auto ModelBrowserApplication::OnExit() -> int32_t { return EXIT_SUCCESS; }
 
+static auto MakeWindowTitle(const wxString &working_dir) -> wxString {
+    return wxString{"Model browser - "} + working_dir;
+}
+
 ModelBrowserFrame::ModelBrowserFrame()
-    : wxFrame{nullptr,           wxID_ANY,         "Model browser - " + wxGetCwd(),
+    : wxFrame{nullptr,           wxID_ANY,         MakeWindowTitle(wxGetCwd()),
               wxDefaultPosition, wxSize{640, 480}, wxDEFAULT_FRAME_STYLE} {
     SetMinSize(wxSize{640, 480});
 
@@ -128,10 +150,19 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenDirectory, this, eMenuCommandFileOpenDirectory);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLogWindow, this, eMenuCommandViewShowLogs);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomIn, this, eMenuCommandViewZoomIn);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnResetView, this, eMenuCommandViewResetView);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
     notebook_right_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &ModelBrowserFrame::OnPageChanged, this);
+}
+
+auto ModelBrowserFrame::SetWorkingDirectory(const wxString &working_dir) -> void {
+    working_dir_ = working_dir;
+    SetTitle(MakeWindowTitle(working_dir_));
+    dir_control_->SetRootDirectory(working_dir_);
 }
 
 auto ModelBrowserFrame::CloseCurrentFile() -> void {
@@ -180,13 +211,37 @@ auto ModelBrowserFrame::OnExit([[maybe_unused]] wxCommandEvent &event) -> void {
 }
 
 auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void {
-    wxMessageBox(
-        "Yapon Model Viewer made by wolftender (https://github.com/wolftender)", "About Model viewer...",
-        wxOK | wxICON_INFORMATION);
+    wxAboutDialogInfo about_info;
+    about_info.SetName("Yapon Model Viewer");
+    about_info.SetVersion(wxString::Format("%s (compiled %s)", GIT_COMMIT_ID, __DATE__));
+    about_info.SetDescription(
+        "Patapon GXX and GMO model viewer, made by rekjn/wolftender.\nSpecial thanks to owocek.\nSpecial thanks to "
+        "Patamodding Discord community.");
+    about_info.SetCopyright("Copyright by rekjn (c) 2026");
+    about_info.SetWebSite("https://github.com/wolftender");
+    about_info.AddDeveloper("wolftender (https://github.com/wolftender)");
+
+    wxAboutBox(about_info);
 }
 
-auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {}
-auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {}
+auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {
+    wxFileDialog *file_select = new wxFileDialog(this, wxASCII_STR(wxFileSelectorPromptStr), working_dir_);
+    if (file_select->ShowModal() == wxID_OK) {
+        OpenNewFile(file_select->GetPath());
+    }
+
+    file_select->Destroy();
+}
+
+auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) -> void {
+    wxDirDialog *dir_select = new wxDirDialog(this, wxASCII_STR(wxDirSelectorPromptStr), working_dir_);
+    if (dir_select->ShowModal() == wxID_OK) {
+        SetWorkingDirectory(dir_select->GetPath());
+    }
+
+    dir_select->Destroy();
+}
+
 auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
 class GmoWxLogger : public gmo::GmoLogger {
@@ -418,8 +473,12 @@ private:
 
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
+    OpenNewFile(full_path);
+}
 
+auto ModelBrowserFrame::OpenNewFile(const wxString &full_path) -> void {
     wxFile fs{full_path, wxFile::read};
+
     if (fs.Error()) {
         wxMessageBox(
             wxString::Format("Cannot open file %s (%s)", full_path, wxSysErrorMsg(fs.GetLastError())),
@@ -482,6 +541,30 @@ auto ModelBrowserFrame::OnPageChanged([[maybe_unused]] wxBookCtrlEvent &event) -
         EnableViewerOptions(true);
     } else {
         EnableViewerOptions(false);
+    }
+}
+
+auto ModelBrowserFrame::OnZoomOut([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ZoomOut();
+    } else if (texture_viewer_) {
+        texture_viewer_->ZoomOut();
+    }
+}
+
+auto ModelBrowserFrame::OnZoomIn([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ZoomIn();
+    } else if (texture_viewer_) {
+        texture_viewer_->ZoomIn();
+    }
+}
+
+auto ModelBrowserFrame::OnResetView([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ResetView();
+    } else if (texture_viewer_) {
+        texture_viewer_->ResetView();
     }
 }
 

@@ -12,6 +12,27 @@ ModelViewer::AzimuthCameraController::AzimuthCameraController() {
     camera_.SetCenter({0.0f, 0.5f, 0.0f});
 }
 
+auto ModelViewer::AzimuthCameraController::ZoomOut() -> void {
+    zoom_ = zoom_ + 0.25f;
+    SetCameraParameters();
+}
+
+auto ModelViewer::AzimuthCameraController::ZoomIn() -> void {
+    zoom_ = zoom_ - 0.25f;
+    SetCameraParameters();
+}
+
+auto ModelViewer::AzimuthCameraController::ResetView() -> void {
+    zoom_ = 1.0f;
+    camera_.SetNear(0.1f);
+    camera_.SetFar(300.0f);
+    camera_.SetDistance(zoom_);
+    camera_.SetCenter({0.0f, 0.5f, 0.0f});
+    camera_.SetAzimuth(0.0f);
+    camera_.SetElevation(0.0f);
+    SetCameraParameters();
+}
+
 auto ModelViewer::AzimuthCameraController::OnUpdateSize(float width, float height) -> void {
     camera_.SetAspect(width / height);
 }
@@ -39,17 +60,40 @@ auto ModelViewer::AzimuthCameraController::OnMouseMotion(wxMouseEvent &event) ->
     } else {
         prev_mouse_pos_ = std::nullopt;
     }
+
+    SetCameraParameters();
 }
 
 auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) -> void {
     auto delta = event.GetWheelRotation() / event.GetWheelDelta();
-    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+    zoom_ = zoom_ - (delta * 0.05f);
+    SetCameraParameters();
+}
+
+auto ModelViewer::AzimuthCameraController::SetCameraParameters() -> void {
+    zoom_ = glm::clamp(zoom_, 0.2f, 10.0f);
     camera_.SetDistance(zoom_);
 }
 
 ModelViewer::OrthoCameraController::OrthoCameraController() : center_{0.0f, 0.0f} {
     camera_.SetNear(-200.0f);
     camera_.SetFar(200.0f);
+}
+
+auto ModelViewer::OrthoCameraController::ZoomOut() -> void {
+    zoom_ = zoom_ + 0.25f;
+    SetCameraParameters();
+}
+
+auto ModelViewer::OrthoCameraController::ZoomIn() -> void {
+    zoom_ = zoom_ - 0.25f;
+    SetCameraParameters();
+}
+
+auto ModelViewer::OrthoCameraController::ResetView() -> void {
+    center_ = {0.0f, 0.0f};
+    zoom_ = 1.0f;
+    SetCameraParameters();
 }
 
 auto ModelViewer::OrthoCameraController::OnUpdateSize(float width, float height) -> void {
@@ -72,7 +116,7 @@ auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseE
         center_ =
             center_ + glm::fvec2{-static_cast<float>(delta_position.x), static_cast<float>(delta_position.y)} * zoom_;
 
-        camera_.SetCenter(glm::fvec3{center_, 0.0f});
+        SetCameraParameters();
     } else {
         prev_mouse_pos_ = std::nullopt;
     }
@@ -80,8 +124,15 @@ auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseE
 
 auto ModelViewer::OrthoCameraController::OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {
     auto delta = event.GetWheelRotation() / event.GetWheelDelta();
-    zoom_ = glm::clamp(zoom_ - (delta) * 0.05f, 0.2f, 10.0f);
+    zoom_ = zoom_ - (delta * 0.05f);
+
+    SetCameraParameters();
+}
+
+auto ModelViewer::OrthoCameraController::SetCameraParameters() -> void {
+    zoom_ = glm::clamp(zoom_, 0.2f, 10.0f);
     camera_.SetSize(size_ * zoom_);
+    camera_.SetCenter(glm::fvec3{center_, 0.0f});
 }
 
 ModelViewer::ModelViewer(
@@ -134,6 +185,24 @@ auto ModelViewer::SetAnimationIndex(uint32_t index) -> void {
     }
 
     RefreshText();
+}
+
+auto ModelViewer::ZoomIn() -> void {
+    if (camera_controller_) {
+        camera_controller_->ZoomIn();
+    }
+}
+
+auto ModelViewer::ZoomOut() -> void {
+    if (camera_controller_) {
+        camera_controller_->ZoomOut();
+    }
+}
+
+auto ModelViewer::ResetView() -> void {
+    if (camera_controller_) {
+        camera_controller_->ResetView();
+    }
 }
 
 auto ModelViewer::OnInitializeGL() -> void {

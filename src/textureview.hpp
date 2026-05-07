@@ -28,12 +28,18 @@ public:
 
     TextureViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gxt_buffer);
 
+    auto ZoomIn() -> void;
+    auto ZoomOut() -> void;
+    auto ResetView() -> void;
+
 protected:
     auto OnInitializeGL() -> void override;
     auto OnRender() -> void override;
 
     auto OnIdle(wxIdleEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
+    auto OnMouseMotion(wxMouseEvent &event) -> void;
+    auto ClampZoom() -> void;
 
 private:
     enum class State {
@@ -44,6 +50,9 @@ private:
     };
 
     float zoom_ = 1.0f;
+    glm::fvec2 center_ = glm::fvec2{0.0f};
+    std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
+
     std::span<const uint8_t> gxt_buffer_;
     std::optional<gl::ShaderProgram> shader_texture_;
     std::optional<gl::ShaderProgram> shader_background_;

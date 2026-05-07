@@ -39,10 +39,26 @@ FetchContent_MakeAvailable(glm fmt)
 # wxwidgets
 find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc gl)
 
+find_package(Git OPTIONAL)
+if (Git_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_ID
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
+
+if (NOT GIT_COMMIT_ID)
+    set(GIT_COMMIT_ID "unknown commit")
+endif()
+
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     GLM_ENABLE_EXPERIMENTAL
+    GIT_COMMIT_ID="${GIT_COMMIT_ID}"
 )
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
