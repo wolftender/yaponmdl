@@ -28,12 +28,17 @@ public:
 
     TextureViewer(wxWindow *parent, const wxGLAttributes &attributes, std::span<const uint8_t> gxt_buffer);
 
+    auto ZoomIn() -> void;
+    auto ZoomOut() -> void;
+    auto ResetView() -> void;
+
 protected:
     auto OnInitializeGL() -> void override;
     auto OnRender() -> void override;
 
     auto OnIdle(wxIdleEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
+    auto ClampZoom() -> void;
 
 private:
     enum class State {

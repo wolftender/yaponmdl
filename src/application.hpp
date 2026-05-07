@@ -45,6 +45,10 @@ private:
     auto OnFileSelected(wxCommandEvent &event) -> void;
     auto OnPageChanged(wxBookCtrlEvent &event) -> void;
 
+    auto OnZoomOut(wxCommandEvent &event) -> void;
+    auto OnZoomIn(wxCommandEvent &event) -> void;
+    auto OnResetView(wxCommandEvent &event) -> void;
+
     auto EnableViewerOptions(bool enabled) -> void;
 
     ConstrainedSplitter *splitter_ = nullptr;

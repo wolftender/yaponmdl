@@ -151,6 +151,9 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenDirectory, this, eMenuCommandFileOpenDirectory);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLogWindow, this, eMenuCommandViewShowLogs);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomIn, this, eMenuCommandViewZoomIn);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnResetView, this, eMenuCommandViewResetView);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
@@ -528,6 +531,30 @@ auto ModelBrowserFrame::OnPageChanged([[maybe_unused]] wxBookCtrlEvent &event) -
         EnableViewerOptions(true);
     } else {
         EnableViewerOptions(false);
+    }
+}
+
+auto ModelBrowserFrame::OnZoomOut([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ZoomOut();
+    } else if (texture_viewer_) {
+        texture_viewer_->ZoomOut();
+    }
+}
+
+auto ModelBrowserFrame::OnZoomIn([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ZoomIn();
+    } else if (texture_viewer_) {
+        texture_viewer_->ZoomIn();
+    }
+}
+
+auto ModelBrowserFrame::OnResetView([[maybe_unused]] wxCommandEvent &event) -> void {
+    if (model_viewer_) {
+        model_viewer_->ResetView();
+    } else if (texture_viewer_) {
+        texture_viewer_->ResetView();
     }
 }
 

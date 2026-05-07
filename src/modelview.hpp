@@ -22,6 +22,10 @@ public:
     public:
         virtual ~ICameraController() noexcept = default;
 
+        virtual auto ZoomOut() -> void = 0;
+        virtual auto ZoomIn() -> void = 0;
+        virtual auto ResetView() -> void = 0;
+
         virtual auto GetCamera() const -> const render::hal::ICamera & = 0;
         virtual auto OnUpdateSize([[maybe_unused]] float width, [[maybe_unused]] float height) -> void {}
         virtual auto OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {}
@@ -34,11 +38,17 @@ public:
 
         auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
 
+        auto ZoomOut() -> void override;
+        auto ZoomIn() -> void override;
+        auto ResetView() -> void override;
+
         auto OnUpdateSize(float width, float height) -> void override;
         auto OnMouseMotion(wxMouseEvent &event) -> void override;
         auto OnMouseScroll(wxMouseEvent &event) -> void override;
 
     private:
+        auto SetCameraParameters() -> void;
+
         float zoom_ = 1.0f;
         std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
         render::AzimuthCamera camera_;
@@ -50,11 +60,17 @@ public:
 
         auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
 
+        auto ZoomOut() -> void override;
+        auto ZoomIn() -> void override;
+        auto ResetView() -> void override;
+
         auto OnUpdateSize(float width, float height) -> void override;
         auto OnMouseMotion(wxMouseEvent &event) -> void override;
         auto OnMouseScroll(wxMouseEvent &event) -> void override;
 
     private:
+        auto SetCameraParameters() -> void;
+
         float zoom_ = 1.0f;
         glm::fvec2 size_;
         glm::fvec2 center_;
@@ -80,6 +96,10 @@ public:
 
     auto GetAnimationIndex() const -> uint32_t { return anim_counter_; }
     auto SetAnimationIndex(uint32_t index) -> void;
+
+    auto ZoomIn() -> void;
+    auto ZoomOut() -> void;
+    auto ResetView() -> void;
 
 protected:
     auto OnInitializeGL() -> void override;

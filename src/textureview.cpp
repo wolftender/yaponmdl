@@ -18,6 +18,18 @@ TextureViewer::TextureViewer(wxWindow *parent, const wxGLAttributes &attributes,
     Bind(wxEVT_MOUSEWHEEL, &TextureViewer::OnMouseScroll, this);
 }
 
+auto TextureViewer::ZoomIn() -> void {
+    zoom_ = zoom_ + 0.25f;
+    ClampZoom();
+}
+
+auto TextureViewer::ZoomOut() -> void {
+    zoom_ = zoom_ - 0.25f;
+    ClampZoom();
+}
+
+auto TextureViewer::ResetView() -> void { zoom_ = 1.0f; }
+
 auto TextureViewer::OnInitializeGL() -> void {
     GL_IMPLEMENTATION_INTERNAL;
 
@@ -135,5 +147,9 @@ auto TextureViewer::OnIdle([[maybe_unused]] wxIdleEvent &event) -> void { Render
 
 auto TextureViewer::OnMouseScroll(wxMouseEvent &event) -> void {
     auto delta = event.GetWheelRotation() / event.GetWheelDelta();
-    zoom_ = glm::clamp(zoom_ + (delta) * 0.05f, 0.2f, 10.0f);
+    zoom_ = zoom_ + (delta * 0.05f);
+
+    ClampZoom();
 }
+
+auto TextureViewer::ClampZoom() -> void { zoom_ = glm::clamp(zoom_, 0.2f, 10.0f); }

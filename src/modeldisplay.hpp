@@ -13,6 +13,10 @@ public:
         wxWindow *parent = nullptr, wxWindowID id = wxID_ANY, const wxPoint &position = wxDefaultPosition,
         const wxSize &size = wxDefaultSize);
 
+    auto ZoomIn() -> void;
+    auto ZoomOut() -> void;
+    auto ResetView() -> void;
+
 private:
     auto BuildModelControls() -> void;
     auto OnModelLoaded(wxCommandEvent &event) -> void;
