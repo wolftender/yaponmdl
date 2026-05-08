@@ -341,6 +341,8 @@ public:
         return Bitmap{
             .width = bm.width,
             .height = bm.height,
+            .uv_scale = bm.uv_scale,
+            .uv_offset = bm.uv_offset,
             .plane = std::move(bm.rgba_plane),
         };
     }

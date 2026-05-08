@@ -76,7 +76,8 @@ struct RGBA8888Color {
  * this is all good but the GE reads 16 byte * 8 row blocks
  * a swizzled texture has the blocks laid out sequentially
  */
-auto UnswizzleBitmap(std::span<const uint8_t> buffer, uint32_t width, uint32_t height) -> std::vector<uint8_t> {
+auto UnswizzleBitmap(std::span<const uint8_t> buffer, uint32_t stride, uint32_t width, uint32_t height)
+    -> std::vector<uint8_t> {
     constexpr uint32_t kBlockWidth = 16;
     constexpr uint32_t kBlockHeight = 8;
     constexpr uint32_t kBlockSize = kBlockWidth * kBlockHeight;
@@ -85,7 +86,7 @@ auto UnswizzleBitmap(std::span<const uint8_t> buffer, uint32_t width, uint32_t h
     const uint32_t num_blocks = width * height / kBlockSize; // how many sequenced blocks we have in this texture
 
     std::vector<uint8_t> bitmap;
-    bitmap.resize(width * height);
+    bitmap.resize(stride * height);
 
     uint32_t i = 0;
     for (uint32_t block_index = 0; block_index < num_blocks; ++block_index) {
@@ -100,8 +101,22 @@ auto UnswizzleBitmap(std::span<const uint8_t> buffer, uint32_t width, uint32_t h
             const uint32_t x = block_sx + byte_x;
             const uint32_t y = block_sy + byte_y;
 
-            bitmap[(y * width) + x] = buffer[i++];
+            bitmap[(y * stride) + x] = buffer[i++];
         }
+    }
+
+    return bitmap;
+}
+
+auto AdjustBitmap(std::span<const uint8_t> buffer, uint32_t stride, uint32_t width, uint32_t height)
+    -> std::vector<uint8_t> {
+    std::vector<uint8_t> bitmap;
+    bitmap.resize(stride * height);
+
+    for (uint32_t byte_idx = 0; byte_idx < width * height; ++byte_idx) {
+        const uint32_t x = byte_idx % width;
+        const uint32_t y = byte_idx / width;
+        bitmap[(y * stride) + x] = buffer[byte_idx];
     }
 
     return bitmap;
@@ -353,6 +368,9 @@ auto LoadBitmap(
         uint32_t clut_addr = 0;
         uint32_t clut_size = 0;
 
+        glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+        glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+
         bool returned = false;
     } ge_state;
 
@@ -463,6 +481,26 @@ auto LoadBitmap(
             break;
         }
 
+        case pspgu::SceGeCommand::TEX_SCALE_U: {
+            ge_state.uv_scale.x = util::bytes::F24ToF32(ge_command_arg & 0x00ffffff);
+            break;
+        }
+
+        case pspgu::SceGeCommand::TEX_SCALE_V: {
+            ge_state.uv_scale.y = util::bytes::F24ToF32(ge_command_arg & 0x00ffffff);
+            break;
+        }
+
+        case pspgu::SceGeCommand::TEX_OFFSET_U: {
+            ge_state.uv_offset.x = util::bytes::F24ToF32(ge_command_arg & 0x00ffffff);
+            break;
+        }
+
+        case pspgu::SceGeCommand::TEX_OFFSET_V: {
+            ge_state.uv_offset.y = util::bytes::F24ToF32(ge_command_arg & 0x00ffffff);
+            break;
+        }
+
         case pspgu::RET: {
             ge_state.returned = true;
             break;
@@ -524,6 +562,8 @@ auto LoadBitmap(
 
     bitmap.width = ge_state.texture_width;
     bitmap.height = ge_state.texture_height;
+    bitmap.uv_offset = ge_state.uv_offset;
+    bitmap.uv_scale = ge_state.uv_scale;
 
     bool is_format_matching_clut = true;
     if (ge_state.clut_size != 0) {
@@ -558,12 +598,32 @@ auto LoadBitmap(
     // basically just get the size of a texel and multiply it by the width
     const auto texel_byte_width = GetPixelBitWidth(ge_state.texture_format);
     const auto texture_byte_stride = ge_state.texture_width * texel_byte_width / 8; // assume byte = 8 bits for allegrex
+    const auto texture_load_stride = ge_state.texture_stride * texel_byte_width / 8;
 
     AssertSeek(command_reader, ge_state.texture_addr);
-    auto raw_bitmap = command_reader.ReadBuffer(ge_state.texture_height * texture_byte_stride);
+
+    const auto ge_max_read_size = static_cast<uint32_t>(command_reader.Remaining());
+    auto raw_bitmap =
+        command_reader.ReadBuffer(std::min(ge_state.texture_height * texture_load_stride, ge_max_read_size));
 
     if (!raw_bitmap.has_value()) {
         throw GxtParseError{fmt::format("cannot read bitmap at specified ge address: {:#010x}", ge_state.texture_addr)};
+    }
+
+    std::vector<uint8_t> pixel_buffer;
+    pixel_buffer.resize(texture_load_stride * ge_state.texture_height, 0);
+    for (uint32_t line = 0; line < ge_state.texture_height; ++line) {
+        const auto line_begin = texture_load_stride * line;
+        const auto line_end = line_begin + texture_load_stride;
+        const auto pixel_buffer_offs = texture_load_stride * line;
+
+        if (line_end > raw_bitmap->size_bytes()) {
+            logger.log("warning: GE was instruced to read out of bounds");
+            break;
+        }
+
+        std::copy(
+            raw_bitmap->begin() + line_begin, raw_bitmap->begin() + line_end, pixel_buffer.begin() + pixel_buffer_offs);
     }
 
     if (is_palette_enabled) {
@@ -571,21 +631,25 @@ auto LoadBitmap(
         if (is_unswizzle_needed) {
             const auto tex_buffer_stride = bitmap.rgba_plane = ImageDecodeCLUT(
                 palette, ge_state.texture_format,
-                UnswizzleBitmap(raw_bitmap.value(), texture_byte_stride, ge_state.texture_height),
+                UnswizzleBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
                 ge_state.texture_width, ge_state.texture_height);
         } else {
             bitmap.rgba_plane = ImageDecodeCLUT(
-                palette, ge_state.texture_format, raw_bitmap.value(), ge_state.texture_width, ge_state.texture_height);
+                palette, ge_state.texture_format,
+                AdjustBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
+                ge_state.texture_width, ge_state.texture_height);
         }
     } else {
         if (is_unswizzle_needed) {
             bitmap.rgba_plane = ImageDecode(
                 ge_state.texture_format,
-                UnswizzleBitmap(raw_bitmap.value(), texture_byte_stride, ge_state.texture_height),
+                UnswizzleBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
                 ge_state.texture_width, ge_state.texture_height);
         } else {
             bitmap.rgba_plane = ImageDecode(
-                ge_state.texture_format, raw_bitmap.value(), ge_state.texture_width, ge_state.texture_height);
+                ge_state.texture_format,
+                AdjustBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
+                ge_state.texture_width, ge_state.texture_height);
         }
     }
 

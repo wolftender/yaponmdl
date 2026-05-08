@@ -20,6 +20,8 @@ auto MakeErrorBitmap() -> const conv::ITextureRepository::Bitmap {
     conv::ITextureRepository::Bitmap bitmap;
     bitmap.width = 4;
     bitmap.height = 4;
+    bitmap.uv_scale = glm::fvec2{1.0f, 1.0f};
+    bitmap.uv_offset = glm::fvec2{0.0f, 0.0f};
 
     bitmap.plane.resize(bitmap.width * bitmap.height * 4);
     for (uint32_t i = 0; i < bitmap.width * bitmap.height; ++i) {
