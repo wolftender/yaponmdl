@@ -291,7 +291,7 @@ auto ConvertGMO(
             parent_id = node_map[gmo_parent_id].value();
         }
 
-        const auto node_id = model->AddNode(parent_id, gmo_bone.name).value();
+        const auto node_id = model->AddNode(parent_id, gmo_bone.name, gmo_bone.draw_sort).value();
         node_map[gmo_bone_id] = node_id;
 
         auto node = model->GetNode(node_id);

@@ -11,7 +11,7 @@ auto Model::Node::AddMesh(MeshId id) -> void {
     meshes_.push_back(std::move(id));
 
     if (is_first_drawable) {
-        model_->mesh_nodes_.push_back(self_);
+        model_->MarkAsMeshNode(self_);
     }
 }
 
@@ -20,7 +20,7 @@ auto Model::Node::AddAnimMesh(AnimatedMeshId id) -> void {
     animated_meshes_.push_back(std::move(id));
 
     if (is_first_drawable) {
-        model_->mesh_nodes_.push_back(self_);
+        model_->MarkAsMeshNode(self_);
     }
 }
 
@@ -167,6 +167,7 @@ Model::Model(hal::IDevice *device) : device_{device} {
             /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
             /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
             /* alpha       = */ glm::fvec1{1.0f},
+            /* draw_sort   = */ 0,
         });
 }
 
@@ -207,6 +208,13 @@ auto Model::AddRgbaTextureImpl(uint32_t width, uint32_t height, std::span<const 
     return TextureId{static_cast<uint32_t>(textures_.size() - 1)};
 }
 
+auto Model::MarkAsMeshNode(NodeId node) -> void {
+    mesh_nodes_.push_back(node);
+    std::sort(mesh_nodes_.begin(), mesh_nodes_.end(), [&](const auto node_id_l, const auto node_id_r) -> bool {
+        return nodes_[node_id_l.index()].GetDrawSort() < nodes_[node_id_r.index()].GetDrawSort();
+    });
+}
+
 auto Model::AddSkin(Skin &&skin) -> std::optional<SkinId> {
     skins_.emplace_back(std::move(skin));
     return SkinId{static_cast<uint32_t>(skins_.size() - 1)};
@@ -217,7 +225,7 @@ auto Model::AddMaterial(const Material::Description &desc) -> std::optional<Mate
     return MaterialId{static_cast<uint32_t>(materials_.size() - 1)};
 }
 
-auto Model::AddNode(NodeId parent, std::string_view name) -> std::optional<NodeId> {
+auto Model::AddNode(NodeId parent, std::string_view name, uint32_t draw_sort) -> std::optional<NodeId> {
     auto node = GetNode(parent);
     if (!node) {
         return std::nullopt;
@@ -237,6 +245,7 @@ auto Model::AddNode(NodeId parent, std::string_view name) -> std::optional<NodeI
             /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
             /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
             /* alpha       = */ glm::fvec1{1.0f},
+            draw_sort,
         });
 
     node = GetNode(parent);

@@ -166,6 +166,7 @@ public:
         auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
         auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
         auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
+        auto GetDrawSort() const -> uint32_t { return draw_sort_; }
 
         auto SetTranslation(const glm::fvec3 &translation) -> void { translation_ = translation; }
         auto SetScale(const glm::fvec3 &scale) -> void { scale_ = scale; }
@@ -178,9 +179,10 @@ public:
         Node(
             Model *model, NodeId self, std::string_view name, std::optional<NodeId> parent,
             const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation, const glm::fvec4 &color,
-            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale, const glm::fvec1 &alpha)
+            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale, const glm::fvec1 &alpha, uint32_t draw_sort)
             : model_{model}, self_{self}, name_{name}, parent_{parent}, translation_{translation}, scale_{scale},
-              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale}, alpha_{alpha} {}
+              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale}, alpha_{alpha},
+              draw_sort_{draw_sort} {}
 
         Model *model_ = nullptr;
         NodeId self_;
@@ -200,6 +202,8 @@ public:
         glm::fvec2 uv_offset_;
         glm::fvec2 uv_scale_;
         glm::fvec1 alpha_;
+
+        uint32_t draw_sort_;
 
         friend class Model;
     };
@@ -610,7 +614,7 @@ public:
     auto AddSkin(Skin &&skin) -> std::optional<SkinId>;
 
     auto AddMaterial(const Material::Description &desc) -> std::optional<MaterialId>;
-    auto AddNode(NodeId parent, std::string_view name) -> std::optional<NodeId>;
+    auto AddNode(NodeId parent, std::string_view name, uint32_t draw_sort = 0) -> std::optional<NodeId>;
     auto AddAnimation(Animation &&animation) -> std::optional<AnimationId>;
 
     auto GetMesh(MeshId handle) -> Mesh *;
@@ -718,6 +722,7 @@ private:
         std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices, MaterialId material, SkinId skin)
         -> std::optional<AnimatedMeshId>;
     auto AddRgbaTextureImpl(uint32_t width, uint32_t height, std::span<const uint8_t> data) -> std::optional<TextureId>;
+    auto MarkAsMeshNode(NodeId node) -> void;
 
     hal::IDevice *device_;
 

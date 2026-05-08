@@ -614,12 +614,17 @@ private:
             }
 
             case 226: {
-                // TODO: for patapon, zsort is unk0 == 0, then unk1 is just the value
+                // for patapon, zsort is unk0 == 0, then unk1 is just the value
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
                 const auto unknown0 = AssertRead<uint32_t>(reader);
                 const auto unknown1 = AssertRead<uint32_t>(reader);
 
-                GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                if (unknown0 == 0) {
+                    bone.draw_sort = unknown1;
+                } else {
+                    GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                }
+
                 break;
             }
 
