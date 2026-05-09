@@ -265,6 +265,13 @@ public:
     }
 };
 
+class GxtWxLogger : public gxt::GxtLogger {
+public:
+    auto log(std::string_view message) const -> void override {
+        wxLogMessage("libgxt message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
 class GmoTextureRepository final : public conv::ITextureRepository {
 public:
     GmoTextureRepository(const std::string &path) {
@@ -324,7 +331,7 @@ public:
 
         std::vector<gxt::GxtImageBitmap> bitmaps;
         try {
-            bitmaps = gxt::LoadBitmaps(buffer);
+            bitmaps = gxt::LoadBitmaps(buffer, &logger_);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", iter->second, e.what()));
             return std::nullopt;
@@ -379,6 +386,7 @@ private:
         }
     }
 
+    GxtWxLogger logger_;
     std::unordered_map<std::string, std::string> dir_tree_;
 };
 
