@@ -5,6 +5,8 @@
 #include <wx/dirdlg.h>
 #include <wx/filename.h>
 
+#include <stb_image/stb_image.h>
+
 #include "application.hpp"
 #include "hexview.hpp"
 
@@ -274,6 +276,8 @@ public:
 
 class GmoTextureRepository final : public conv::ITextureRepository {
 public:
+    constexpr static std::array<std::string_view, 5> kImageExtensions = {".tga", ".png", ".jpg", ".jpeg", ".bmp"};
+
     GmoTextureRepository(const std::string &path) {
         if (!fs::exists(path)) {
             return;
@@ -292,57 +296,105 @@ public:
 
     auto FetchTexture(std::string_view name) const -> std::optional<Bitmap> override {
         const auto ext_position = name.find_last_of('.');
-        const auto iter = [&]() {
+        const auto search_key = [&]() -> std::string {
             if (ext_position != std::string::npos) {
-                return dir_tree_.find(std::string{name.substr(0, ext_position)});
+                return std::string{name.substr(0, ext_position)};
             } else {
-                return dir_tree_.find(std::string{name});
+                return std::string{name};
             }
         }();
 
-        if (iter == dir_tree_.end()) {
-            return std::nullopt;
+        const auto gxt_iter = gxt_files_.find(search_key);
+        if (gxt_iter != gxt_files_.end()) {
+            auto gxt_res = LoadBitmapGxt(gxt_iter->second);
+            if (gxt_res.has_value()) {
+                return gxt_res;
+            }
         }
 
-        // load bitmap
-        std::fstream fs{iter->second, std::ios::in | std::ios::binary};
+        for (const auto &extension : kImageExtensions) {
+            const auto fallback_iter = fallback_files_.find(std::string{search_key} + std::string{extension});
+            if (fallback_iter == fallback_files_.end()) {
+                continue;
+            }
+
+            auto res = LoadBitmapStb(fallback_iter->second);
+            if (!res.has_value()) {
+                continue;
+            }
+
+            return res;
+        }
+
+        return std::nullopt;
+    }
+
+private:
+    auto ReadWholeFileBinary(std::string_view name, std::vector<uint8_t> &buffer) const -> bool {
+        std::fstream fs{std::string{name}, std::ios::in | std::ios::binary};
 
         if (!fs.good()) {
-            wxLogError(wxString::Format("texture repo: failed to load file %s", iter->second));
-            return std::nullopt;
+            wxLogError(wxString::Format("texture repo: failed to load file %s", name));
+            return false;
         }
 
         fs.seekg(0, std::ios::end);
         const auto file_size = fs.tellg();
         fs.seekg(0, std::ios::beg);
 
-        std::vector<uint8_t> buffer;
-        buffer.resize(16);
+        buffer.resize(file_size);
+        fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
 
-        fs.read(reinterpret_cast<char *>(buffer.data()), 16);
-        if (!gxt::CheckHeader(buffer)) {
-            wxLogError(wxString::Format("texture repo: invalid texture %s", iter->second));
+        return true;
+    }
+
+    // fallback if gxt texture was not found
+    auto LoadBitmapStb(std::string_view name) const -> std::optional<Bitmap> {
+        std::vector<uint8_t> buffer;
+        if (!ReadWholeFileBinary(name, buffer)) {
             return std::nullopt;
         }
 
-        buffer.resize(file_size);
-        fs.seekg(0, std::ios::beg);
-        fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
+        int width = 0, height = 0, components = 0;
+        int res = stbi_info_from_memory(buffer.data(), buffer.size(), &width, &height, &components);
+        if (!res) {
+            wxLogError(wxString::Format("texture repo: invalid stbi fallback image %s"));
+            return std::nullopt;
+        }
+
+        auto img = stbi_load_from_memory(buffer.data(), buffer.size(), &width, &height, &components, 4);
+
+        Bitmap bitmap;
+        bitmap.width = width;
+        bitmap.height = height;
+        bitmap.plane.resize(width * height * 4);
+
+        ::memcpy(bitmap.plane.data(), img, width * height * 4 * sizeof(uint8_t));
+        stbi_image_free(img);
+
+        return bitmap;
+    }
+
+    auto LoadBitmapGxt(std::string_view name) const -> std::optional<Bitmap> {
+        std::vector<uint8_t> buffer;
+        if (!ReadWholeFileBinary(name, buffer)) {
+            return std::nullopt;
+        }
 
         std::vector<gxt::GxtImageBitmap> bitmaps;
         try {
             bitmaps = gxt::LoadBitmaps(buffer, &logger_);
         } catch (const std::exception &e) {
-            wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", iter->second, e.what()));
+            wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", name, e.what()));
             return std::nullopt;
         }
 
         if (bitmaps.size() == 0) {
-            wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", iter->second));
+            wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", name));
             return std::nullopt;
         }
 
-        wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, iter->second));
+        wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, name));
 
         auto &bm = bitmaps.front();
         return Bitmap{
@@ -354,7 +406,6 @@ public:
         };
     }
 
-private:
     auto MapDirectory(const fs::path &path) -> void {
         constexpr uint32_t kLimitFiles = 1 << 14;
         wxLogMessage(wxString::Format("texture repo: mapping directory: %s", path.c_str()));
@@ -373,21 +424,24 @@ private:
             }
 
             const auto extension = dir_entry.path().extension();
-            const auto is_image =
-                (extension == ".tga" || extension == ".gxt" || extension == ".png" || extension == ".jpg" ||
-                 extension == ".jpeg" || extension == ".bmp");
+            const auto is_image_gxt = (extension == ".gxt");
+            const auto is_image_any =
+                std::find(kImageExtensions.begin(), kImageExtensions.end(), extension) != kImageExtensions.end();
 
-            if (!is_image) {
-                continue;
+            if (is_image_gxt) {
+                const auto filename = dir_entry.path().stem().string();
+                gxt_files_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
+            } else if (is_image_any) {
+                const auto filename = dir_entry.path().filename().string();
+                fallback_files_.emplace(
+                    std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
             }
-
-            auto filename = dir_entry.path().stem().string();
-            dir_tree_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
         }
     }
 
     GxtWxLogger logger_;
-    std::unordered_map<std::string, std::string> dir_tree_;
+    std::unordered_map<std::string, std::string> gxt_files_;
+    std::unordered_map<std::string, std::string> fallback_files_;
 };
 
 class GmoLoader final : public ModelViewer::ILoader {
