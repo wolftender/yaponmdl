@@ -839,12 +839,16 @@ auto LoadFromBinary(std::span<const u8> binary) -> Model {
 auto CheckHeader(std::span<const u8> binary) -> bool {
     BinaryReader reader{binary};
 
-    u32 magic, software_version, writer_version;
-    magic = AssertRead<u32>(reader);
-    software_version = AssertRead<u32>(reader);
-    writer_version = AssertRead<u32>(reader);
+    try {
+        u32 magic, software_version, writer_version;
+        magic = AssertRead<u32>(reader);
+        software_version = AssertRead<u32>(reader);
+        writer_version = AssertRead<u32>(reader);
 
-    if (kMagicNumber != magic || kWriterSoftware != software_version || kWriterVersion != writer_version) {
+        if (kMagicNumber != magic || kWriterSoftware != software_version || kWriterVersion != writer_version) {
+            return false;
+        }
+    } catch ([[maybe_unused]] const std::exception &e) {
         return false;
     }
 
