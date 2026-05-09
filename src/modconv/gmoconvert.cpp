@@ -448,7 +448,10 @@ auto ConvertGMO(
 
         for (const auto &gmo_animation : gmo_motion.animations) {
             if (gmo_animation.target != gmo::GmoAnimationTarget::eBone) {
-                logger->Log(fmt::format("libconv: motion track {} has an unsupported target type", gmo_motion.name));
+                logger->Log(
+                    fmt::format(
+                        "libconv: motion track {} has an unsupported target type {}", gmo_motion.name,
+                        static_cast<uint32_t>(gmo_animation.target)));
                 continue;
             }
 

@@ -613,16 +613,16 @@ private:
                 break;
             }
 
-            case 226: {
+            case SCEGMO_BONE_STATE: {
                 // for patapon, zsort is unk0 == 0, then unk1 is just the value
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                const auto unknown0 = AssertRead<uint32_t>(reader);
-                const auto unknown1 = AssertRead<uint32_t>(reader);
+                const auto state = AssertRead<uint32_t>(reader);
+                const auto value = AssertRead<uint32_t>(reader);
 
-                if (unknown0 == 0) {
-                    bone.draw_sort = unknown1;
+                if (state == SCEGMO_BONE_STATE_Z_SORT) {
+                    bone.draw_sort = value;
                 } else {
-                    GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                    GMO_DEBUG_PRINT(logger_, "SCEGMO_BONE_STATE, state = {}, value = {}", state, value);
                 }
 
                 break;
@@ -1542,6 +1542,10 @@ private:
 
                 case SCEGMO_MATERIAL:
                     anim.target = GmoAnimationTarget::eMaterial;
+                    break;
+
+                case SCEGMO_PATAPON_CUSTOM_TARGET:
+                    anim.target = GmoAnimationTarget::ePataponEXT1;
                     break;
 
                 default:

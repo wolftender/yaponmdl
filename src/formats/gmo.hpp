@@ -281,6 +281,7 @@ struct GmoTexture {
 enum class GmoAnimationTarget {
     eBone,
     eMaterial,
+    ePataponEXT1,
     eUnknown,
 };
 
