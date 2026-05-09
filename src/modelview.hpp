@@ -8,7 +8,26 @@
 #include "render/device.hpp"
 #include "render/text.hpp"
 
+class ModelViewerFrameEvent;
+
 wxDECLARE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
+wxDECLARE_EVENT(MODEL_VIEWER_FRAME, ModelViewerFrameEvent);
+
+class ModelViewerFrameEvent : public wxCommandEvent {
+public:
+    ModelViewerFrameEvent(wxEventType event_type = MODEL_VIEWER_FRAME, int id = 0) : wxCommandEvent{event_type, id} {}
+    ModelViewerFrameEvent(const ModelViewerFrameEvent &event) : wxCommandEvent{event} {
+        delta_time_ = event.delta_time_;
+    }
+
+    auto Clone() const -> wxEvent * { return new ModelViewerFrameEvent(*this); }
+
+    auto GetDeltaTime() const -> float { return delta_time_; }
+    auto SetDeltaTime(float delta_time) -> void { delta_time_ = delta_time; }
+
+private:
+    float delta_time_ = 0.0f;
+};
 
 class ModelViewer : public GLView {
 public:
@@ -101,6 +120,14 @@ public:
     auto ZoomOut() -> void;
     auto ResetView() -> void;
 
+    auto GetCurrentAnimationTime() const -> float;
+    auto GetCurrentAnimationDuration() const -> float;
+
+    auto IsCurrentAnimationPaused() const -> bool { return is_anim_paused_; }
+    auto SetCurrentAnimationPaused(bool paused) -> void { is_anim_paused_ = paused; }
+
+    auto SeekCurrentAnimation(float time) -> void;
+
 protected:
     auto OnInitializeGL() -> void override;
     auto OnRender() -> void override;
@@ -139,6 +166,7 @@ private:
     uint32_t anim_counter_ = 0;
     uint32_t fps_ = 0;
     float frame_timer_ = 0.0f;
+    bool is_anim_paused_ = false;
 
     std::unique_ptr<ICameraController> camera_controller_;
 

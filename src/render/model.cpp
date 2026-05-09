@@ -476,6 +476,15 @@ auto Model::Animation::AnyNodeChannel::Apply(float time, Pose &pose, Data &anima
         &animation_data.prev_keyframe_, &animation_data.next_keyframe_);
 }
 
+auto Model::Controller::GetDuration() const -> float {
+    auto animation = model_->GetAnimation(animation_);
+    if (animation) {
+        return animation->GetDuration();
+    }
+
+    return 0.0f;
+}
+
 auto Model::Controller::SetAnimation(AnimationId id) -> void {
     animation_ = id;
     time_ = 0.0f;

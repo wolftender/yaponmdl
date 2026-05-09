@@ -684,6 +684,7 @@ public:
         auto GetAnimation() const -> AnimationId { return animation_; }
         auto GetLoop() const -> bool { return loop_; }
         auto GetTime() const -> float { return time_; }
+        auto GetDuration() const -> float;
 
         auto GetPose() -> Pose & { return *pose_.get(); }
         auto GetPose() const -> const Pose & { return *pose_.get(); }

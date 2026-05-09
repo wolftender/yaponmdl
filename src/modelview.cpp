@@ -4,6 +4,7 @@
 #include "resourcestore.hpp"
 
 wxDEFINE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
+wxDEFINE_EVENT(MODEL_VIEWER_FRAME, ModelViewerFrameEvent);
 
 ModelViewer::AzimuthCameraController::AzimuthCameraController() {
     camera_.SetNear(0.1f);
@@ -182,6 +183,7 @@ auto ModelViewer::SetAnimationIndex(uint32_t index) -> void {
 
     if (controller_) {
         controller_->SetAnimation(animations[anim_counter_]);
+        controller_->Integrate(0.0f); // this is needed to tick the controller once if it is paused
     }
 
     RefreshText();
@@ -202,6 +204,29 @@ auto ModelViewer::ZoomOut() -> void {
 auto ModelViewer::ResetView() -> void {
     if (camera_controller_) {
         camera_controller_->ResetView();
+    }
+}
+
+auto ModelViewer::GetCurrentAnimationTime() const -> float {
+    if (!controller_) {
+        return 0.0f;
+    }
+
+    return controller_->GetTime();
+}
+
+auto ModelViewer::GetCurrentAnimationDuration() const -> float {
+    if (!controller_) {
+        return 0.0f;
+    }
+
+    return controller_->GetDuration();
+}
+
+auto ModelViewer::SeekCurrentAnimation(float time) -> void {
+    if (controller_) {
+        controller_->Seek(time);
+        controller_->Integrate(0.0f);
     }
 }
 
@@ -298,7 +323,7 @@ auto ModelViewer::OnRender() -> void {
         return;
     }
 
-    if (controller_.has_value()) {
+    if (controller_.has_value() && !is_anim_paused_) {
         controller_->Integrate(delta_time);
     }
 
@@ -345,6 +370,11 @@ auto ModelViewer::OnRender() -> void {
             test_text_->GetMesh().Draw();
         });
     });
+
+    // finished rendering frame event
+    ModelViewerFrameEvent event{MODEL_VIEWER_FRAME, GetId()};
+    event.SetDeltaTime(delta_time);
+    ProcessEvent(event);
 }
 
 auto ModelViewer::OnSize(wxSizeEvent &event) -> void {
