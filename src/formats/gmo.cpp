@@ -414,7 +414,7 @@ public:
         }
     }
 
-    auto LoadAllModels() const -> std::vector<GmoModel> {
+    auto LoadAllModels() -> std::vector<GmoModel> {
         std::vector<GmoModel> result;
 
         const auto &file_node = map_.front();
@@ -613,13 +613,18 @@ private:
                 break;
             }
 
-            case 226: {
-                // TODO: for patapon, zsort is unk0 == 0, then unk1 is just the value
+            case SCEGMO_BONE_STATE: {
+                // for patapon, zsort is unk0 == 0, then unk1 is just the value
                 AssertSeek(reader, GetChunkArgsOffset(chunk));
-                const auto unknown0 = AssertRead<uint32_t>(reader);
-                const auto unknown1 = AssertRead<uint32_t>(reader);
+                const auto state = AssertRead<uint32_t>(reader);
+                const auto value = AssertRead<uint32_t>(reader);
 
-                GMO_DEBUG_PRINT(logger_, "type 226, unknown0 = {}, unknown1 = {}", unknown0, unknown1);
+                if (state == SCEGMO_BONE_STATE_Z_SORT) {
+                    bone.draw_sort = value;
+                } else {
+                    GMO_DEBUG_PRINT(logger_, "SCEGMO_BONE_STATE, state = {}, value = {}", state, value);
+                }
+
                 break;
             }
 
@@ -825,6 +830,34 @@ private:
             kAligns[fmt_texture] | kAligns[fmt_color] | kAligns[fmt_normal] | kAligns[fmt_vertex] | kAligns[fmt_weight];
 
         array.vertices.reserve(native_num_verts);
+
+        glm::fvec3 vertex_offset = glm::fvec3{0.0f, 0.0f, 0.0f};
+        glm::fvec3 vertex_scale = glm::fvec3{1.0f, 1.0f, 1.0f};
+        glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+        glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+
+        switch (fmt_vertex) {
+        case pspgu::eSceGuFmtVertexBYTE:
+        case pspgu::eSceGuFmtVertexSHORT:
+            vertex_offset = vertex_offset_;
+            vertex_scale = vertex_scale_;
+            break;
+
+        default:
+            break;
+        }
+
+        switch (fmt_texture) {
+        case pspgu::eSceGuFmtTextureUBYTE:
+        case pspgu::eSceGuFmtTextureUSHORT:
+            uv_offset = uv_offset_;
+            uv_scale = uv_scale_ * 2.0f;
+            break;
+
+        default:
+            break;
+        }
+
         for (uint32_t i = 0; i < native_num_verts; ++i) {
             GmoVertex vertex;
 
@@ -832,10 +865,10 @@ private:
                 vertex.weights[w] = fnReadWeight(reader);
             }
 
-            vertex.uv = fnReadUv(reader);
+            vertex.uv = fnReadUv(reader) * uv_scale + uv_offset;
             vertex.color = fnReadColor(reader);
             vertex.normal = fnReadNormal(reader);
-            vertex.position = fnReadPosition(reader);
+            vertex.position = fnReadPosition(reader) * vertex_scale + vertex_offset;
 
             array.vertices.emplace_back(vertex);
 
@@ -1511,6 +1544,10 @@ private:
                     anim.target = GmoAnimationTarget::eMaterial;
                     break;
 
+                case SCEGMO_PATAPON_CUSTOM_TARGET:
+                    anim.target = GmoAnimationTarget::ePataponEXT1;
+                    break;
+
                 default:
                     anim.target = GmoAnimationTarget::eUnknown;
                     GMO_DEBUG_PRINT(
@@ -1617,7 +1654,7 @@ private:
         return motion;
     }
 
-    auto LoadModel(const GmoChunk &model_chunk) const -> GmoModel {
+    auto LoadModel(const GmoChunk &model_chunk) -> GmoModel {
         util::bytes::BinaryReader reader{buffer_};
 
         if (GetChunkType(model_chunk) != SCEGMO_MODEL) {
@@ -1682,8 +1719,36 @@ private:
                 model.bounding_max.z = AssertRead<float>(reader);
                 break;
 
-            case SCEGMO_VERTEX_OFFSET:
-                throw GmoParseError{fmt::format("SCEGMO_VERTEX_OFFSET is unsupported")};
+            case SCEGMO_VERTEX_OFFSET: {
+                AssertSeek(reader, GetChunkArgsOffset(chunk));
+                const uint32_t format = AssertRead<uint32_t>(reader);
+
+                switch (format) {
+                case SCEGU_VERTEX_FLOAT:
+                    vertex_offset_.x = AssertRead<float>(reader);
+                    vertex_offset_.y = AssertRead<float>(reader);
+                    vertex_offset_.z = AssertRead<float>(reader);
+                    vertex_scale_.x = AssertRead<float>(reader);
+                    vertex_scale_.y = AssertRead<float>(reader);
+                    vertex_scale_.z = AssertRead<float>(reader);
+                    break;
+
+                case SCEGU_TEXTURE_FLOAT:
+                    uv_offset_.x = AssertRead<float>(reader);
+                    uv_offset_.y = AssertRead<float>(reader);
+                    uv_scale_.x = AssertRead<float>(reader);
+                    uv_scale_.y = AssertRead<float>(reader);
+                    break;
+
+                default:
+                    GMO_DEBUG_PRINT(
+                        logger_, "SCEGMO_VERTEX_OFFSET {} is unsupported for model with name {}", format,
+                        model_chunk.name);
+                    break;
+                }
+
+                break;
+            }
 
             default:
                 GMO_DEBUG_PRINT(logger_, "skipping chunk type for model {} with name {}", type, model_chunk.name);
@@ -1804,6 +1869,11 @@ private:
 
     std::span<const uint8_t> buffer_;
     std::vector<GmoChunk> map_;
+
+    glm::fvec3 vertex_scale_ = glm::fvec3{1.0f, 1.0f, 1.0f};
+    glm::fvec3 vertex_offset_ = glm::fvec3{0.0f, 0.0f, 0.0f};
+    glm::fvec2 uv_scale_ = glm::fvec2{1.0f, 1.0f};
+    glm::fvec2 uv_offset_ = glm::fvec2{0.0f, 0.0f};
 };
 
 class GmoConsoleLogger final : public GmoLogger {

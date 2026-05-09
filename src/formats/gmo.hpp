@@ -103,6 +103,7 @@ struct GmoBone {
     glm::fvec3 bounding_max = {0.0f, 0.0f, 0.0f};
 
     glm::fmat4x4 local_matrix = {1.0f};
+    uint32_t draw_sort = 0;
 };
 
 // clang-format off
@@ -280,6 +281,7 @@ struct GmoTexture {
 enum class GmoAnimationTarget {
     eBone,
     eMaterial,
+    ePataponEXT1,
     eUnknown,
 };
 

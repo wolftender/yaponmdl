@@ -10,8 +10,11 @@ namespace conv {
 class ITextureRepository {
 public:
     struct Bitmap {
-        uint32_t width;
-        uint32_t height;
+        uint32_t width = 0;
+        uint32_t height = 0;
+
+        glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+        glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
 
         std::vector<uint8_t> plane;
     };

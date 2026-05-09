@@ -64,14 +64,17 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
                 throw std::runtime_error{"invalid mesh id supplied for draw"};
             }
 
+            bool use_diffuse = false;
             if (draw->diffuse_map.has_value()) {
                 const auto *texture = device_->texture_pool_.Get(draw->diffuse_map->index());
                 if (texture) {
+                    use_diffuse = true;
                     context.SetSampler("u_diffuse", 0);
                     texture->Bind(0);
                 }
             }
 
+            context.SetFlag("u_use_diffuse", use_diffuse);
             context.SetUniform("u_color", draw->color);
             context.SetUniform("u_uv_offset", draw->uv_offset);
             context.SetUniform("u_uv_scale", draw->uv_scale);
@@ -97,9 +100,11 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
                 throw std::runtime_error{"invalid mesh id supplied for draw"};
             }
 
+            bool use_diffuse = false;
             if (draw->diffuse_map.has_value()) {
                 const auto *texture = device_->texture_pool_.Get(draw->diffuse_map->index());
                 if (texture) {
+                    use_diffuse = true;
                     context.SetSampler("u_diffuse", 0);
                     texture->Bind(0);
                 }
@@ -108,6 +113,7 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
             skin_buffer->ExecuteUpload();
 
             context.SetBufferBase("u_bones", *skin_buffer);
+            context.SetFlag("u_use_diffuse", use_diffuse);
             context.SetUniform("u_color", draw->color);
             context.SetUniform("u_uv_offset", draw->uv_offset);
             context.SetUniform("u_uv_scale", draw->uv_scale);

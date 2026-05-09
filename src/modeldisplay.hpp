@@ -20,7 +20,12 @@ public:
 private:
     auto BuildModelControls() -> void;
     auto OnModelLoaded(wxCommandEvent &event) -> void;
+    auto OnFrameRendered(ModelViewerFrameEvent &event) -> void;
     auto OnSelectAnimation(wxDataViewEvent &event) -> void;
+
+    auto OnPausePressed(wxCommandEvent &event) -> void;
+    auto OnPlayPressed(wxCommandEvent &event) -> void;
+    auto OnSliderUpdated(wxCommandEvent &event) -> void;
 
     auto BuildAnimationLayout(const std::vector<std::string> &animations) -> void;
     auto BuildStaticLayout() -> void;
@@ -29,5 +34,6 @@ private:
     wxSplitterWindow *splitter_ = nullptr;
 
     wxPanel *controls_ = nullptr;
+    wxSlider *animation_slider_ = nullptr;
     ModelViewer *viewer_ = nullptr;
 };

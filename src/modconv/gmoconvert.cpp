@@ -17,6 +17,8 @@ auto MakeErrorBitmap() -> const conv::ITextureRepository::Bitmap {
     conv::ITextureRepository::Bitmap bitmap;
     bitmap.width = 4;
     bitmap.height = 4;
+    bitmap.uv_scale = glm::fvec2{1.0f, 1.0f};
+    bitmap.uv_offset = glm::fvec2{0.0f, 0.0f};
 
     bitmap.plane.resize(bitmap.width * bitmap.height * 4);
     for (uint32_t i = 0; i < bitmap.width * bitmap.height; ++i) {
@@ -289,7 +291,7 @@ auto ConvertGMO(
             parent_id = node_map[gmo_parent_id].value();
         }
 
-        const auto node_id = model->AddNode(parent_id, gmo_bone.name).value();
+        const auto node_id = model->AddNode(parent_id, gmo_bone.name, gmo_bone.draw_sort).value();
         node_map[gmo_bone_id] = node_id;
 
         auto node = model->GetNode(node_id);
@@ -446,7 +448,10 @@ auto ConvertGMO(
 
         for (const auto &gmo_animation : gmo_motion.animations) {
             if (gmo_animation.target != gmo::GmoAnimationTarget::eBone) {
-                logger->Log(fmt::format("libconv: motion track {} has an unsupported target type", gmo_motion.name));
+                logger->Log(
+                    fmt::format(
+                        "libconv: motion track {} has an unsupported target type {}", gmo_motion.name,
+                        static_cast<uint32_t>(gmo_animation.target)));
                 continue;
             }
 
