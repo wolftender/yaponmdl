@@ -225,8 +225,10 @@ auto ModelViewer::GetCurrentAnimationDuration() const -> float {
 
 auto ModelViewer::SeekCurrentAnimation(float time) -> void {
     if (controller_) {
+        controller_->SetLoop(false);
         controller_->Seek(time);
         controller_->Integrate(0.0f);
+        controller_->SetLoop(true);
     }
 }
 

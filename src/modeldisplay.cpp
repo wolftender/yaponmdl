@@ -51,10 +51,7 @@ auto ModelDisplay::OnSliderUpdated([[maybe_unused]] wxCommandEvent &event) -> vo
         const auto slider_value = animation_slider_->GetValue();
         const auto normalized = static_cast<float>(slider_value) / 100.0f;
         const auto duration = viewer_->GetCurrentAnimationDuration();
-
-        // hack to prevent loop condition from being triggered here
-        // this should be properly fixed at some point
-        const auto time = std::clamp(normalized, 0.0f, 0.9999f) * duration;
+        const auto time = normalized * duration;
 
         viewer_->SeekCurrentAnimation(time);
     }
