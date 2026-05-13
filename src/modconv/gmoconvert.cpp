@@ -566,7 +566,7 @@ auto ConvertGMO(
 
                 break;
             }
-            case gmo::eAnimPataponUnknownEXT: {
+            case gmo::eAnimPataponAlphaEXT: {
                 if (gmo_animation.target_id >= node_map.size()) {
                     logger->Log(
                         fmt::format(

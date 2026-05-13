@@ -306,7 +306,7 @@ enum GmoAnimationProperty {
     eAnimMaterialBump,
     eAnimMaterialTextureCrop,
     eAnimPataponTextureEXT = 0x4100,
-    eAnimPataponUnknownEXT = 0x4101,
+    eAnimPataponAlphaEXT = 0x4101,
 };
 
 struct GmoAnimation {
