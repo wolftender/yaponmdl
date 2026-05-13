@@ -1,4 +1,6 @@
 #pragma once
+#include <filesystem>
+
 #include <wx/wx.h>
 #include <wx/app.h>
 #include <wx/event.h>
@@ -11,6 +13,10 @@
 #include "textureview.hpp"
 #include "modeldisplay.hpp"
 #include "constsplitter.hpp"
+
+#include "modconv/modelconvert.hpp"
+
+namespace fs = std::filesystem;
 
 class DirectoryViewControl : public wxGenericDirCtrl {
 public:
@@ -33,10 +39,33 @@ private:
         bool enable_gxx_interpolation = false;
     };
 
+    class DirTextureRepository final : public conv::ITextureRepository {
+    public:
+        constexpr static std::array<std::string_view, 5> kImageExtensions = {".tga", ".png", ".jpg", ".jpeg", ".bmp"};
+
+        DirTextureRepository(const std::string &path);
+        auto FetchTexture(std::string_view name) const -> std::optional<Bitmap> override;
+
+        auto GetNumGxtFiles() const -> uint32_t { return gxt_files_.size(); }
+        auto GetNumFallbackFiles() const -> uint32_t { return fallback_files_.size(); }
+
+    private:
+        auto ReadWholeFileBinary(std::string_view name, std::vector<uint8_t> &buffer) const -> bool;
+        auto LoadBitmapStb(std::string_view name) const -> std::optional<Bitmap>;
+        auto LoadBitmapGxt(std::string_view name) const -> std::optional<Bitmap>;
+        auto MapDirectory(const fs::path &path) -> void;
+
+        std::unordered_map<std::string, std::string> gxt_files_;
+        std::unordered_map<std::string, std::string> fallback_files_;
+    };
+
 public:
     ModelBrowserFrame();
 
 private:
+    auto LogTextureStats() const -> void;
+    auto RescanTextures() -> void;
+
     auto SetWorkingDirectory(const wxString &working_dir) -> void;
     auto CloseCurrentFile() -> void;
     auto OpenNewFile(const wxString &full_path) -> void;
@@ -48,6 +77,7 @@ private:
 
     auto OnOpenFile(wxCommandEvent &event) -> void;
     auto OnOpenDirectory(wxCommandEvent &event) -> void;
+    auto OnRescanTextures(wxCommandEvent &event) -> void;
 
     auto OnShowLogWindow(wxCommandEvent &event) -> void;
 
@@ -76,6 +106,8 @@ private:
     wxString working_dir_;
     DirectoryViewControl *dir_control_ = nullptr;
     HexViewer *hex_viewer_ = nullptr;
+
+    DirTextureRepository texture_repository_;
 };
 
 class ModelBrowserApplication : public wxApp {

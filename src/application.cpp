@@ -1,5 +1,4 @@
 #include <fstream>
-#include <filesystem>
 
 #include <wx/aboutdlg.h>
 #include <wx/dirdlg.h>
@@ -15,13 +14,10 @@
 #include "formats/act.hpp"
 #include "formats/gxx.hpp"
 
-#include "modconv/modelconvert.hpp"
-
-namespace fs = std::filesystem;
-
 enum MenuCommand {
     eMenuCommandFileOpenFile = 10000,
     eMenuCommandFileOpenDirectory,
+    eMenuCommandFileRefreshTextures,
     eMenuCommandViewShowLogs = 20000,
     eMenuCommandViewZoomIn,
     eMenuCommandViewZoomOut,
@@ -83,15 +79,29 @@ static auto MakeWindowTitle(const wxString &working_dir) -> wxString {
     return wxString{"Model browser - "} + working_dir;
 }
 
+static auto MakeLogWindow(wxWindow *parent) -> wxLogWindow * {
+    auto *log_window = new wxLogWindow(parent, "Log window", false, false);
+    wxLog::EnableLogging(true);
+    wxLog::SetActiveTarget(log_window);
+    wxLog::SetLogLevel(wxLOG_Message);
+    log_window->Show(false);
+
+    return log_window;
+}
+
 ModelBrowserFrame::ModelBrowserFrame()
     : wxFrame{nullptr,           wxID_ANY,         MakeWindowTitle(wxGetCwd()),
-              wxDefaultPosition, wxSize{640, 480}, wxDEFAULT_FRAME_STYLE} {
+              wxDefaultPosition, wxSize{640, 480}, wxDEFAULT_FRAME_STYLE},
+      log_window_{MakeLogWindow(this)}, working_dir_{wxGetCwd()}, texture_repository_{std::string{working_dir_}} {
     SetMinSize(wxSize{640, 480});
 
     // build menu
     wxMenu *menu_file = new wxMenu;
     menu_file->Append(eMenuCommandFileOpenFile, "&Open file", "Open a new file");
     menu_file->Append(eMenuCommandFileOpenDirectory, "&Open directory", "Open a new working directory");
+    menu_file->AppendSeparator();
+    menu_file->Append(
+        eMenuCommandFileRefreshTextures, "&Refresh Texture Index", "Rescan the directory in search of textures");
     menu_file->AppendSeparator();
     menu_file->Append(wxID_EXIT);
 
@@ -113,12 +123,6 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_bar->Append(menu_file, "&File");
     menu_bar->Append(menu_view, "&View");
     menu_bar->Append(menu_help, "&Help");
-
-    log_window_ = new wxLogWindow(this, "Log window", false, false);
-    wxLog::EnableLogging(true);
-    wxLog::SetActiveTarget(log_window_);
-    wxLog::SetLogLevel(wxLOG_Message);
-    log_window_->Show(false);
 
     wxLogMessage("initialized application");
 
@@ -156,6 +160,7 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenFile, this, eMenuCommandFileOpenFile);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnOpenDirectory, this, eMenuCommandFileOpenDirectory);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnRescanTextures, this, eMenuCommandFileRefreshTextures);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLogWindow, this, eMenuCommandViewShowLogs);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomIn, this, eMenuCommandViewZoomIn);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
@@ -165,12 +170,36 @@ ModelBrowserFrame::ModelBrowserFrame()
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
     notebook_right_->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, &ModelBrowserFrame::OnPageChanged, this);
+
+    LogTextureStats();
+}
+
+auto ModelBrowserFrame::LogTextureStats() const -> void {
+    wxLogMessage(
+        fmt::format(
+            "texture scanning complete in {}, statistics:"
+            "\n\tfound gxt files: {}"
+            "\n\tfound fallback files: {}",
+            std::string{working_dir_}, texture_repository_.GetNumGxtFiles(),
+            texture_repository_.GetNumFallbackFiles()));
+}
+
+auto ModelBrowserFrame::RescanTextures() -> void {
+    wxLogMessage("rescanning directory for new textures...");
+    texture_repository_ = DirTextureRepository{std::string{working_dir_}};
+
+    LogTextureStats();
+    if (model_viewer_) {
+        ReloadCurrentFile();
+    }
 }
 
 auto ModelBrowserFrame::SetWorkingDirectory(const wxString &working_dir) -> void {
     working_dir_ = working_dir;
     SetTitle(MakeWindowTitle(working_dir_));
     dir_control_->SetRootDirectory(working_dir_);
+
+    RescanTextures();
 }
 
 auto ModelBrowserFrame::CloseCurrentFile() -> void {
@@ -250,6 +279,7 @@ auto ModelBrowserFrame::OnOpenDirectory([[maybe_unused]] wxCommandEvent &event) 
     dir_select->Destroy();
 }
 
+auto ModelBrowserFrame::OnRescanTextures([[maybe_unused]] wxCommandEvent &event) -> void { RescanTextures(); }
 auto ModelBrowserFrame::OnShowLogWindow([[maybe_unused]] wxCommandEvent &event) -> void { log_window_->Show(true); }
 
 class GmoWxLogger : public gmo::GmoLogger {
@@ -280,184 +310,173 @@ public:
     }
 };
 
-class GmoTextureRepository final : public conv::ITextureRepository {
-public:
-    constexpr static std::array<std::string_view, 5> kImageExtensions = {".tga", ".png", ".jpg", ".jpeg", ".bmp"};
+ModelBrowserFrame::DirTextureRepository::DirTextureRepository(const std::string &path) {
+    if (!fs::exists(path)) {
+        return;
+    }
 
-    GmoTextureRepository(const std::string &path) {
-        if (!fs::exists(path)) {
-            return;
+    const auto is_file = fs::is_regular_file(path);
+    const auto is_dir = fs::is_directory(path);
+
+    if (is_file) {
+        const auto file_dir = fs::path{path}.parent_path();
+        MapDirectory(file_dir);
+    } else if (is_dir) {
+        MapDirectory(fs::path{path});
+    }
+}
+
+auto ModelBrowserFrame::DirTextureRepository::FetchTexture(std::string_view name) const -> std::optional<Bitmap> {
+    const auto ext_position = name.find_last_of('.');
+    const auto search_key = [&]() -> std::string {
+        if (ext_position != std::string::npos) {
+            return std::string{name.substr(0, ext_position)};
+        } else {
+            return std::string{name};
         }
+    }();
 
-        const auto is_file = fs::is_regular_file(path);
-        const auto is_dir = fs::is_directory(path);
-
-        if (is_file) {
-            const auto file_dir = fs::path{path}.parent_path();
-            MapDirectory(file_dir);
-        } else if (is_dir) {
-            MapDirectory(fs::path{path});
+    const auto gxt_iter = gxt_files_.find(search_key);
+    if (gxt_iter != gxt_files_.end()) {
+        auto gxt_res = LoadBitmapGxt(gxt_iter->second);
+        if (gxt_res.has_value()) {
+            return gxt_res;
         }
     }
 
-    auto FetchTexture(std::string_view name) const -> std::optional<Bitmap> override {
-        const auto ext_position = name.find_last_of('.');
-        const auto search_key = [&]() -> std::string {
-            if (ext_position != std::string::npos) {
-                return std::string{name.substr(0, ext_position)};
-            } else {
-                return std::string{name};
-            }
-        }();
-
-        const auto gxt_iter = gxt_files_.find(search_key);
-        if (gxt_iter != gxt_files_.end()) {
-            auto gxt_res = LoadBitmapGxt(gxt_iter->second);
-            if (gxt_res.has_value()) {
-                return gxt_res;
-            }
+    for (const auto &extension : kImageExtensions) {
+        const auto fallback_iter = fallback_files_.find(std::string{search_key} + std::string{extension});
+        if (fallback_iter == fallback_files_.end()) {
+            continue;
         }
 
-        for (const auto &extension : kImageExtensions) {
-            const auto fallback_iter = fallback_files_.find(std::string{search_key} + std::string{extension});
-            if (fallback_iter == fallback_files_.end()) {
-                continue;
-            }
-
-            auto res = LoadBitmapStb(fallback_iter->second);
-            if (!res.has_value()) {
-                continue;
-            }
-
-            return res;
+        auto res = LoadBitmapStb(fallback_iter->second);
+        if (!res.has_value()) {
+            continue;
         }
 
+        return res;
+    }
+
+    return std::nullopt;
+}
+
+auto ModelBrowserFrame::DirTextureRepository::ReadWholeFileBinary(
+    std::string_view name, std::vector<uint8_t> &buffer) const -> bool {
+    std::fstream fs{std::string{name}, std::ios::in | std::ios::binary};
+
+    if (!fs.good()) {
+        wxLogError(wxString::Format("texture repo: failed to load file %s", name));
+        return false;
+    }
+
+    fs.seekg(0, std::ios::end);
+    const auto file_size = fs.tellg();
+    fs.seekg(0, std::ios::beg);
+
+    buffer.resize(file_size);
+    fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
+
+    return true;
+}
+
+// fallback if gxt texture was not found
+auto ModelBrowserFrame::DirTextureRepository::LoadBitmapStb(std::string_view name) const -> std::optional<Bitmap> {
+    std::vector<uint8_t> buffer;
+    if (!ReadWholeFileBinary(name, buffer)) {
         return std::nullopt;
     }
 
-private:
-    auto ReadWholeFileBinary(std::string_view name, std::vector<uint8_t> &buffer) const -> bool {
-        std::fstream fs{std::string{name}, std::ios::in | std::ios::binary};
-
-        if (!fs.good()) {
-            wxLogError(wxString::Format("texture repo: failed to load file %s", name));
-            return false;
-        }
-
-        fs.seekg(0, std::ios::end);
-        const auto file_size = fs.tellg();
-        fs.seekg(0, std::ios::beg);
-
-        buffer.resize(file_size);
-        fs.read(reinterpret_cast<char *>(buffer.data()), file_size);
-
-        return true;
+    int width = 0, height = 0, components = 0;
+    int res = stbi_info_from_memory(buffer.data(), buffer.size(), &width, &height, &components);
+    if (!res) {
+        wxLogError(wxString::Format("texture repo: invalid stbi fallback image %s"));
+        return std::nullopt;
     }
 
-    // fallback if gxt texture was not found
-    auto LoadBitmapStb(std::string_view name) const -> std::optional<Bitmap> {
-        std::vector<uint8_t> buffer;
-        if (!ReadWholeFileBinary(name, buffer)) {
-            return std::nullopt;
-        }
+    auto img = stbi_load_from_memory(buffer.data(), buffer.size(), &width, &height, &components, 4);
 
-        int width = 0, height = 0, components = 0;
-        int res = stbi_info_from_memory(buffer.data(), buffer.size(), &width, &height, &components);
-        if (!res) {
-            wxLogError(wxString::Format("texture repo: invalid stbi fallback image %s"));
-            return std::nullopt;
-        }
+    Bitmap bitmap;
+    bitmap.width = width;
+    bitmap.height = height;
+    bitmap.plane.resize(width * height * 4);
 
-        auto img = stbi_load_from_memory(buffer.data(), buffer.size(), &width, &height, &components, 4);
+    ::memcpy(bitmap.plane.data(), img, width * height * 4 * sizeof(uint8_t));
+    stbi_image_free(img);
 
-        Bitmap bitmap;
-        bitmap.width = width;
-        bitmap.height = height;
-        bitmap.plane.resize(width * height * 4);
+    return bitmap;
+}
 
-        ::memcpy(bitmap.plane.data(), img, width * height * 4 * sizeof(uint8_t));
-        stbi_image_free(img);
-
-        return bitmap;
+auto ModelBrowserFrame::DirTextureRepository::LoadBitmapGxt(std::string_view name) const -> std::optional<Bitmap> {
+    std::vector<uint8_t> buffer;
+    if (!ReadWholeFileBinary(name, buffer)) {
+        return std::nullopt;
     }
 
-    auto LoadBitmapGxt(std::string_view name) const -> std::optional<Bitmap> {
-        std::vector<uint8_t> buffer;
-        if (!ReadWholeFileBinary(name, buffer)) {
-            return std::nullopt;
-        }
-
-        std::vector<gxt::GxtImageBitmap> bitmaps;
-        try {
-            bitmaps = gxt::LoadBitmaps(buffer, &logger_);
-        } catch (const std::exception &e) {
-            wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", name, e.what()));
-            return std::nullopt;
-        }
-
-        if (bitmaps.size() == 0) {
-            wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", name));
-            return std::nullopt;
-        }
-
-        wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, name));
-
-        auto &bm = bitmaps.front();
-        return Bitmap{
-            .width = bm.width,
-            .height = bm.height,
-            .uv_scale = bm.uv_scale,
-            .uv_offset = bm.uv_offset,
-            .plane = std::move(bm.rgba_plane),
-        };
+    std::vector<gxt::GxtImageBitmap> bitmaps;
+    try {
+        GxtWxLogger logger;
+        bitmaps = gxt::LoadBitmaps(buffer, &logger);
+    } catch (const std::exception &e) {
+        wxLogError(wxString::Format("texture repo: invalid gxt %s, error: %s", name, e.what()));
+        return std::nullopt;
     }
 
-    auto MapDirectory(const fs::path &path) -> void {
-        constexpr uint32_t kLimitFiles = 1 << 14;
-        wxLogMessage(wxString::Format("texture repo: mapping directory: %s", path.c_str()));
-
-        uint32_t num_processed = 0;
-        for (const fs::directory_entry &dir_entry : fs::recursive_directory_iterator{path}) {
-            if (num_processed > kLimitFiles) {
-                wxLogMessage(
-                    wxString::Format("texture repo: the directory is too big to index, exceeded %d", kLimitFiles));
-                return;
-            }
-
-            num_processed++;
-            if (!dir_entry.is_regular_file()) {
-                continue;
-            }
-
-            const auto extension = dir_entry.path().extension();
-            const auto is_image_gxt = (extension == ".gxt");
-            const auto is_image_any =
-                std::find(kImageExtensions.begin(), kImageExtensions.end(), extension) != kImageExtensions.end();
-
-            if (is_image_gxt) {
-                const auto filename = dir_entry.path().stem().string();
-                gxt_files_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
-            } else if (is_image_any) {
-                const auto filename = dir_entry.path().filename().string();
-                fallback_files_.emplace(
-                    std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
-            }
-        }
+    if (bitmaps.size() == 0) {
+        wxLogError(wxString::Format("texture repo: gxt %s, has no bitmaps", name));
+        return std::nullopt;
     }
 
-    GxtWxLogger logger_;
-    std::unordered_map<std::string, std::string> gxt_files_;
-    std::unordered_map<std::string, std::string> fallback_files_;
-};
+    wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, name));
+
+    auto &bm = bitmaps.front();
+    return Bitmap{
+        .width = bm.width,
+        .height = bm.height,
+        .uv_scale = bm.uv_scale,
+        .uv_offset = bm.uv_offset,
+        .plane = std::move(bm.rgba_plane),
+    };
+}
+
+auto ModelBrowserFrame::DirTextureRepository::MapDirectory(const fs::path &path) -> void {
+    constexpr uint32_t kLimitFiles = 1 << 14;
+    wxLogMessage(wxString::Format("texture repo: mapping directory: %s", path.c_str()));
+
+    uint32_t num_processed = 0;
+    for (const fs::directory_entry &dir_entry : fs::recursive_directory_iterator{path}) {
+        if (num_processed > kLimitFiles) {
+            wxLogMessage(wxString::Format("texture repo: the directory is too big to index, exceeded %d", kLimitFiles));
+            return;
+        }
+
+        num_processed++;
+        if (!dir_entry.is_regular_file()) {
+            continue;
+        }
+
+        const auto extension = dir_entry.path().extension();
+        const auto is_image_gxt = (extension == ".gxt");
+        const auto is_image_any =
+            std::find(kImageExtensions.begin(), kImageExtensions.end(), extension) != kImageExtensions.end();
+
+        if (is_image_gxt) {
+            const auto filename = dir_entry.path().stem().string();
+            gxt_files_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
+        } else if (is_image_any) {
+            const auto filename = dir_entry.path().filename().string();
+            fallback_files_.emplace(std::make_pair(filename, fs::canonical(fs::absolute(dir_entry.path())).string()));
+        }
+    }
+}
 
 class GmoLoader final : public ModelViewer::ILoader {
 public:
-    GmoLoader(std::span<const uint8_t> gmo_buffer, const std::string &directory)
-        : gmo_buffer_{gmo_buffer}, directory_{directory} {}
+    GmoLoader(std::span<const uint8_t> gmo_buffer, const conv::ITextureRepository &repository)
+        : gmo_buffer_{gmo_buffer}, repository_{repository} {}
 
     virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<ModelViewer::IModelProxy> {
         std::vector<gmo::GmoModel> gmo_model;
-        GmoTextureRepository repository{directory_};
 
         try {
             GmoWxLogger logger;
@@ -472,7 +491,7 @@ public:
         std::unique_ptr<render::Model> model;
         try {
             ConvWxLogger logger;
-            model = conv::ConvertGMO(gmo_model.front(), &device, &repository, &logger);
+            model = conv::ConvertGMO(gmo_model.front(), &device, &repository_, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
             return nullptr;
@@ -483,7 +502,7 @@ public:
 
 private:
     std::span<const uint8_t> gmo_buffer_;
-    std::string directory_;
+    const conv::ITextureRepository &repository_;
 };
 
 class ActLoader final : public ModelViewer::ILoader {
@@ -511,13 +530,12 @@ public:
         eGxxLoaderLoadAsModel = 1 << 0,
     };
 
-    GxxLoader(std::span<const uint8_t> gxx_buffer, const std::string &directory, uint32_t flags = 0)
-        : gxx_buffer_{gxx_buffer}, directory_{directory}, flags_{flags} {}
+    GxxLoader(std::span<const uint8_t> gxx_buffer, const conv::ITextureRepository &repository, uint32_t flags = 0)
+        : gxx_buffer_{gxx_buffer}, repository_{repository}, flags_{flags} {}
 
     virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const
         -> std::unique_ptr<ModelViewer::IModelProxy> {
         std::optional<gxx::GxxModel> gxx_model;
-        GmoTextureRepository repository{directory_};
 
         try {
             GxxWxLogger logger;
@@ -536,7 +554,7 @@ public:
             std::unique_ptr<render::Model> model;
             try {
                 ConvWxLogger logger;
-                model = conv::ConvertGXX(gxx_model.value(), &device, &repository, &logger);
+                model = conv::ConvertGXX(gxx_model.value(), &device, &repository_, &logger);
             } catch (const std::exception &e) {
                 wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
                 return nullptr;
@@ -548,7 +566,7 @@ public:
         std::unique_ptr<render::Drawlist> drawlist;
         try {
             ConvWxLogger logger;
-            drawlist = conv::ConvertGXXDrawlist(gxx_model.value(), &device, &repository, &logger);
+            drawlist = conv::ConvertGXXDrawlist(gxx_model.value(), &device, &repository_, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
             return nullptr;
@@ -559,7 +577,7 @@ public:
 
 private:
     std::span<const uint8_t> gxx_buffer_;
-    std::string directory_;
+    const conv::ITextureRepository &repository_;
     uint32_t flags_ = 0;
 };
 
@@ -616,7 +634,7 @@ auto ModelBrowserFrame::HandleNewFile() -> void {
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GmoLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
+            std::make_unique<GmoLoader>(current_file_, texture_repository_), ModelViewer::MakeOrthoCamera(),
             notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GMO Model view", true);
     } else if (act::CheckHeader(current_file_)) {
@@ -630,7 +648,7 @@ auto ModelBrowserFrame::HandleNewFile() -> void {
         }
 
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GxxLoader>(current_file_, std::string{working_dir_}, gxx_load_flags),
+            std::make_unique<GxxLoader>(current_file_, texture_repository_, gxx_load_flags),
             ModelViewer::MakeOrthoCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GXX Model view", true);
     }
