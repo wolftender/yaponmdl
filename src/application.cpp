@@ -14,15 +14,18 @@
 #include "formats/act.hpp"
 #include "formats/gxx.hpp"
 
+#include "generated/license.h"
+
 enum MenuCommand {
-    eMenuCommandFileOpenFile = 10000,
+    eMenuCommandFileOpenFile = 1000,
     eMenuCommandFileOpenDirectory,
     eMenuCommandFileRefreshTextures,
-    eMenuCommandViewShowLogs = 20000,
+    eMenuCommandViewShowLogs = 2000,
     eMenuCommandViewZoomIn,
     eMenuCommandViewZoomOut,
     eMenuCommandViewResetView,
     eMenuCommandViewInterpolateGxx,
+    eMenuCommandHelpLicense = 9000,
 };
 
 DirectoryViewControl::DirectoryViewControl(
@@ -117,6 +120,7 @@ ModelBrowserFrame::ModelBrowserFrame()
         "Enables automatic GXX interpolation (buggy for some models)", wxITEM_CHECK);
 
     wxMenu *menu_help = new wxMenu;
+    menu_help->Append(eMenuCommandHelpLicense, "License");
     menu_help->Append(wxID_ABOUT);
 
     wxMenuBar *menu_bar = new wxMenuBar;
@@ -166,6 +170,7 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnResetView, this, eMenuCommandViewResetView);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnEnableGxxInterpolation, this, eMenuCommandViewInterpolateGxx);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLicense, this, eMenuCommandHelpLicense);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
@@ -259,6 +264,22 @@ auto ModelBrowserFrame::OnAbout([[maybe_unused]] wxCommandEvent &event) -> void 
     about_info.AddDeveloper("wolftender (https://github.com/wolftender)");
 
     wxAboutBox(about_info);
+}
+
+auto ModelBrowserFrame::OnShowLicense([[maybe_unused]] wxCommandEvent &event) -> void {
+    wxDialog license_dialog{this, wxID_ANY, "License", wxDefaultPosition, wxSize{640, 700}};
+    wxBoxSizer *sizer = new wxBoxSizer{wxVERTICAL};
+
+    auto *license_text =
+        new wxTextCtrl{&license_dialog,   wxID_ANY,      wxString{kLICENSE.data(), kLICENSE.size()},
+                       wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY | wxTE_WORDWRAP};
+
+    sizer->Add(license_text, 1, wxEXPAND | wxALL, 10);
+    sizer->Add(license_dialog.CreateButtonSizer(wxOK), 0, wxALL | wxEXPAND, 10);
+
+    license_dialog.SetSizerAndFit(sizer);
+    license_dialog.SetSize(wxSize{640, 700});
+    license_dialog.ShowModal();
 }
 
 auto ModelBrowserFrame::OnOpenFile([[maybe_unused]] wxCommandEvent &event) -> void {

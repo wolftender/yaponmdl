@@ -74,6 +74,7 @@ private:
 
     auto OnExit(wxCommandEvent &event) -> void;
     auto OnAbout(wxCommandEvent &event) -> void;
+    auto OnShowLicense(wxCommandEvent &event) -> void;
 
     auto OnOpenFile(wxCommandEvent &event) -> void;
     auto OnOpenDirectory(wxCommandEvent &event) -> void;

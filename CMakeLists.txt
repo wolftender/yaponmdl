@@ -92,6 +92,7 @@ function(add_asset ASSET_FILE HEADER_NAME)
     set(GENERATED_HEADERS ${GENERATED_HEADERS} ${OUTPUT_FILE} PARENT_SCOPE)
 endfunction()
 
+add_asset(${CMAKE_SOURCE_DIR}/LICENSE license.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_texture.glsl vert_texture.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_texture.glsl frag_texture.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_checker.glsl frag_checker.glsl.h)
