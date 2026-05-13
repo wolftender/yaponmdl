@@ -51,11 +51,18 @@ public:
         auto GetModel() const -> const Drawlist & { return *model_; }
         auto GetHandle() const -> const hal::TextureHandle & { return handle_; }
 
+        auto GetUvOffset() const -> const glm::fvec2 & { return uv_offset_; }
+        auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
+
     private:
-        Texture(Drawlist *model, hal::TextureHandle handle) : model_{model}, handle_{std::move(handle)} {}
+        Texture(Drawlist *model, hal::TextureHandle handle, const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale)
+            : model_{model}, handle_{std::move(handle)}, uv_offset_{uv_offset}, uv_scale_{uv_scale} {}
 
         Drawlist *model_ = nullptr;
         hal::TextureHandle handle_;
+
+        glm::fvec2 uv_offset_ = glm::fvec2{0.0f, 0.0f};
+        glm::fvec2 uv_scale_ = glm::fvec2{1.0f, 1.0f};
 
         friend Drawlist;
     };
@@ -318,37 +325,12 @@ public:
     auto AddSkin(std::span<const glm::fmat4x4> skin_matrices) -> std::optional<SkinId>;
 
     auto AddVertexBuffer(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices)
-        -> std::optional<VertexBufferId> {
-        auto mesh = device_->CreateMesh(vertices, indices);
-
-        vertex_buffers_.emplace_back(VertexBuffer{this, std::move(mesh)});
-        return VertexBufferId{static_cast<uint32_t>(vertex_buffers_.size() - 1)};
-    }
-
+        -> std::optional<VertexBufferId>;
     auto AddSkinnedVertexBuffer(std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices)
-        -> std::optional<SkinnedVertexBufferId> {
-        auto mesh = device_->CreateAnimatedMesh(vertices, indices);
-
-        skinned_vertex_buffers_.emplace_back(SkinnedVertexBuffer{this, std::move(mesh)});
-        return SkinnedVertexBufferId{static_cast<uint32_t>(skinned_vertex_buffers_.size() - 1)};
-    }
-
-    auto AddRgbaTexture(uint32_t width, uint32_t height, std::span<const uint8_t> range) -> std::optional<TextureId> {
-        hal::TextureDescription desc = {
-            .width = width,
-            .height = height,
-            .min_filter = hal::TextureMinFilter::eLinear,
-            .mag_filter = hal::TextureMagFilter::eLinear,
-            .wrap_s = hal::TextureWrap::eRepeat,
-            .wrap_t = hal::TextureWrap::eRepeat,
-            .data = range,
-        };
-
-        auto texture = device_->CreateRgbaTexture(desc);
-
-        textures_.emplace_back(Texture{this, std::move(texture)});
-        return TextureId{static_cast<uint32_t>(textures_.size() - 1)};
-    }
+        -> std::optional<SkinnedVertexBufferId>;
+    auto AddRgbaTexture(
+        uint32_t width, uint32_t height, std::span<const uint8_t> range, const glm::fvec2 &uv_offset,
+        const glm::fvec2 &uv_scale) -> std::optional<TextureId>;
 
     template <std::invocable<Motion &> F> auto AddMotion(std::string_view name, F builder) -> std::optional<MotionId> {
         Motion motion{name};

@@ -515,7 +515,8 @@ auto ConvertGXXDrawlist(
 
     for (const auto &gxx_texture : gxx_model.textures) {
         const auto bitmap = FetchBitmap(repository, gxx_texture.name);
-        const auto texture_id = drawlist->AddRgbaTexture(bitmap.width, bitmap.height, bitmap.plane);
+        const auto texture_id =
+            drawlist->AddRgbaTexture(bitmap.width, bitmap.height, bitmap.plane, bitmap.uv_offset, bitmap.uv_scale);
 
         if (!texture_id.has_value()) {
             throw std::runtime_error{"failed to allocate drawlist texture"};

@@ -115,6 +115,8 @@ auto Drawlist::Controller::Render(const glm::fmat4x4 &world_matrix) const -> voi
             if (command.parameters.diffuse_map.has_value()) {
                 const auto &texture = model_->textures_[command.parameters.diffuse_map.value().index()];
                 draw_desc.diffuse_map = texture.GetHandle();
+                draw_desc.uv_offset = draw_desc.uv_offset + texture.GetUvOffset();
+                draw_desc.uv_scale = draw_desc.uv_scale * texture.GetUvScale();
             }
 
             device_->SubmitStaticDraw(std::move(draw_desc));
@@ -138,6 +140,8 @@ auto Drawlist::Controller::Render(const glm::fmat4x4 &world_matrix) const -> voi
             if (skinned_command.parameters.diffuse_map.has_value()) {
                 const auto &texture = model_->textures_[skinned_command.parameters.diffuse_map.value().index()];
                 draw_desc.diffuse_map = texture.GetHandle();
+                draw_desc.uv_offset = draw_desc.uv_offset + texture.GetUvOffset();
+                draw_desc.uv_scale = draw_desc.uv_scale * texture.GetUvScale();
             }
 
             device_->SubmitSkinnedDraw(std::move(draw_desc));
@@ -300,6 +304,41 @@ auto Drawlist::AddSkin(std::span<const glm::fmat4x4> skin_matrices) -> std::opti
 
     skins_.emplace_back(Skin{this, skinning_buffer_id});
     return SkinId{static_cast<uint32_t>(skins_.size() - 1)};
+}
+
+auto Drawlist::AddVertexBuffer(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices)
+    -> std::optional<VertexBufferId> {
+    auto mesh = device_->CreateMesh(vertices, indices);
+
+    vertex_buffers_.emplace_back(VertexBuffer{this, std::move(mesh)});
+    return VertexBufferId{static_cast<uint32_t>(vertex_buffers_.size() - 1)};
+}
+
+auto Drawlist::AddSkinnedVertexBuffer(std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices)
+    -> std::optional<SkinnedVertexBufferId> {
+    auto mesh = device_->CreateAnimatedMesh(vertices, indices);
+
+    skinned_vertex_buffers_.emplace_back(SkinnedVertexBuffer{this, std::move(mesh)});
+    return SkinnedVertexBufferId{static_cast<uint32_t>(skinned_vertex_buffers_.size() - 1)};
+}
+
+auto Drawlist::AddRgbaTexture(
+    uint32_t width, uint32_t height, std::span<const uint8_t> range, const glm::fvec2 &uv_offset,
+    const glm::fvec2 &uv_scale) -> std::optional<TextureId> {
+    hal::TextureDescription desc = {
+        .width = width,
+        .height = height,
+        .min_filter = hal::TextureMinFilter::eLinear,
+        .mag_filter = hal::TextureMagFilter::eLinear,
+        .wrap_s = hal::TextureWrap::eRepeat,
+        .wrap_t = hal::TextureWrap::eRepeat,
+        .data = range,
+    };
+
+    auto texture = device_->CreateRgbaTexture(desc);
+
+    textures_.emplace_back(Texture{this, std::move(texture), uv_offset, uv_scale});
+    return TextureId{static_cast<uint32_t>(textures_.size() - 1)};
 }
 
 auto Drawlist::MakeMotionList() const -> std::vector<MotionId> {
