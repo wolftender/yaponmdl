@@ -113,10 +113,13 @@ auto AdjustBitmap(std::span<const uint8_t> buffer, uint32_t stride, uint32_t wid
     std::vector<uint8_t> bitmap;
     bitmap.resize(stride * height);
 
-    for (uint32_t byte_idx = 0; byte_idx < width * height; ++byte_idx) {
-        const uint32_t x = byte_idx % width;
-        const uint32_t y = byte_idx / width;
-        bitmap[(y * stride) + x] = buffer[byte_idx];
+    for (uint32_t row_idx = 0; row_idx < height; ++row_idx) {
+        for (uint32_t col_idx = 0; col_idx < stride && col_idx < width; ++col_idx) {
+            const uint32_t src_idx = width * row_idx + col_idx;
+            const uint32_t dst_idx = stride * row_idx + col_idx;
+
+            bitmap[dst_idx] = buffer[src_idx];
+        }
     }
 
     return bitmap;
@@ -198,21 +201,41 @@ auto ImageDecodeCLUT(
     rgba_plane.resize(width * height * 4);
 
     switch (format) {
-    case eScePFIDX4:
-        for (uint32_t i = 0; i < buffer.size(); ++i) {
-            const auto palette_idx1 = buffer[i] & 0xf;
-            const auto palette_idx2 = (buffer[i] >> 4) & 0xf;
-            rgba_plane[8 * i + 0] = palette[palette_idx1].r;
-            rgba_plane[8 * i + 1] = palette[palette_idx1].g;
-            rgba_plane[8 * i + 2] = palette[palette_idx1].b;
-            rgba_plane[8 * i + 3] = palette[palette_idx1].a;
+    case eScePFIDX4: {
+        const auto stride = (width + 1) / 2;
 
-            rgba_plane[8 * i + 4] = palette[palette_idx2].r;
-            rgba_plane[8 * i + 5] = palette[palette_idx2].g;
-            rgba_plane[8 * i + 6] = palette[palette_idx2].b;
-            rgba_plane[8 * i + 7] = palette[palette_idx2].a;
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width / 2; ++x) {
+                const auto src_idx = stride * y + x;
+                const auto dst_idx = 4 * (width * y + (2 * x));
+
+                const auto pal_idx1 = buffer[src_idx] & 0xf;
+                const auto pal_idx2 = (buffer[src_idx] >> 4) & 0xf;
+
+                rgba_plane[dst_idx + 0] = palette[pal_idx1].r;
+                rgba_plane[dst_idx + 1] = palette[pal_idx1].g;
+                rgba_plane[dst_idx + 2] = palette[pal_idx1].b;
+                rgba_plane[dst_idx + 3] = palette[pal_idx1].a;
+
+                rgba_plane[dst_idx + 4] = palette[pal_idx2].r;
+                rgba_plane[dst_idx + 5] = palette[pal_idx2].g;
+                rgba_plane[dst_idx + 6] = palette[pal_idx2].b;
+                rgba_plane[dst_idx + 7] = palette[pal_idx2].a;
+            }
+
+            if (width % 2 == 1) {
+                const auto src_idx = (stride * y) + (width / 2);
+                const auto dst_idx = 4 * (stride * y + width - 1);
+                const auto pal_idx = buffer[src_idx] & 0xf;
+
+                rgba_plane[dst_idx + 0] = palette[pal_idx].r;
+                rgba_plane[dst_idx + 1] = palette[pal_idx].g;
+                rgba_plane[dst_idx + 2] = palette[pal_idx].b;
+                rgba_plane[dst_idx + 3] = palette[pal_idx].a;
+            }
         }
         break;
+    }
     case eScePFIDX8:
         for (uint32_t i = 0; i < buffer.size(); ++i) {
             const auto palette_idx = buffer[i];
@@ -597,7 +620,18 @@ auto LoadBitmap(
     // for the unswizzle we need to have a BYTE WIDTH of the texture (as GE works on BYTES not TEXELS)
     // basically just get the size of a texel and multiply it by the width
     const auto texel_byte_width = GetPixelBitWidth(ge_state.texture_format);
-    const auto texture_byte_stride = ge_state.texture_width * texel_byte_width / 8; // assume byte = 8 bits for allegrex
+
+    // assume byte = 8 bits for allegrex
+    // we have to handle a case for textures of width 1xH and BPP < 8
+    // this is the case for example for clnf00.gxx
+    //
+    // * |texture_byte_stride| - means the stride of the LOADED texture
+    // * |texture_load_stride| - means the stride of the READ texture
+    // e.g. for tips, the LOADED texture is 512x512, but the STORED texture size is 480x512
+    // so in this case TBW0 = 480, TSIZE0 = 512x512
+    // separate case is when the stored stride is larger, e.g. clnf00_04.gxt, then we get
+    // LOADED texture of size 1x128, but the STORED texture is 32x128
+    const auto texture_byte_stride = (ge_state.texture_width * texel_byte_width + 7) / 8;
     const auto texture_load_stride = ge_state.texture_stride * texel_byte_width / 8;
 
     AssertSeek(command_reader, ge_state.texture_addr);
