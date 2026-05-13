@@ -77,7 +77,7 @@ auto ModelDisplay::OnFrameRendered([[maybe_unused]] ModelViewerFrameEvent &event
     }
 }
 
-auto ModelDisplay::BuildAnimationLayout(const std::vector<std::string> &animations) -> void {
+auto ModelDisplay::BuildAnimationLayout(std::span<const std::string> animations) -> void {
     splitter_ = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxSize{500, 500}, wxSP_3D | wxSP_LIVE_UPDATE);
     splitter_->SetSashGravity(1.0);
     splitter_->SetSashPosition(300);

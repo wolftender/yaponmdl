@@ -26,6 +26,7 @@ enum MenuCommand {
     eMenuCommandViewZoomIn,
     eMenuCommandViewZoomOut,
     eMenuCommandViewResetView,
+    eMenuCommandViewInterpolateGxx,
 };
 
 DirectoryViewControl::DirectoryViewControl(
@@ -100,6 +101,10 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_view->Append(eMenuCommandViewZoomIn, "Zoom in", "Increase zoom");
     menu_view->Append(eMenuCommandViewZoomOut, "Zoom out", "Decrease zoom");
     menu_view->Append(eMenuCommandViewResetView, "Reset view", "Restores view to the defaults");
+    menu_view->AppendSeparator();
+    menu_view->Append(
+        eMenuCommandViewInterpolateGxx, "Interpolate GXX",
+        "Enables automatic GXX interpolation (buggy for some models)", wxITEM_CHECK);
 
     wxMenu *menu_help = new wxMenu;
     menu_help->Append(wxID_ABOUT);
@@ -155,6 +160,7 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomIn, this, eMenuCommandViewZoomIn);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnResetView, this, eMenuCommandViewResetView);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnEnableGxxInterpolation, this, eMenuCommandViewInterpolateGxx);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
 
     dir_control_->Bind(wxEVT_DIRCTRL_FILEACTIVATED, &ModelBrowserFrame::OnFileSelected, this);
@@ -449,7 +455,7 @@ public:
     GmoLoader(std::span<const uint8_t> gmo_buffer, const std::string &directory)
         : gmo_buffer_{gmo_buffer}, directory_{directory} {}
 
-    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<ModelViewer::IModelProxy> {
         std::vector<gmo::GmoModel> gmo_model;
         GmoTextureRepository repository{directory_};
 
@@ -472,7 +478,7 @@ public:
             return nullptr;
         }
 
-        return model;
+        return std::make_unique<ModelViewer::ModelProxyModel>(std::move(model));
     }
 
 private:
@@ -484,11 +490,11 @@ class ActLoader final : public ModelViewer::ILoader {
 public:
     ActLoader(std::span<const uint8_t> act_buffer) : act_buffer_{act_buffer} {}
 
-    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+    virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<ModelViewer::IModelProxy> {
         try {
             ConvWxLogger logger;
             const auto act_model = act::LoadFromBinary(act_buffer_);
-            return conv::ConvertACT(act_model, &device, &logger);
+            return std::make_unique<ModelViewer::ModelProxyModel>(conv::ConvertACT(act_model, &device, &logger));
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libact fatal error: %s", e.what()));
             return nullptr;
@@ -501,10 +507,15 @@ private:
 
 class GxxLoader final : public ModelViewer::ILoader {
 public:
-    GxxLoader(std::span<const uint8_t> gxx_buffer, const std::string &directory)
-        : gxx_buffer_{gxx_buffer}, directory_{directory} {}
+    enum Flags {
+        eGxxLoaderLoadAsModel = 1 << 0,
+    };
 
-    virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const -> std::unique_ptr<render::Model> {
+    GxxLoader(std::span<const uint8_t> gxx_buffer, const std::string &directory, uint32_t flags = 0)
+        : gxx_buffer_{gxx_buffer}, directory_{directory}, flags_{flags} {}
+
+    virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const
+        -> std::unique_ptr<ModelViewer::IModelProxy> {
         std::optional<gxx::GxxModel> gxx_model;
         GmoTextureRepository repository{directory_};
 
@@ -518,21 +529,38 @@ public:
 
         wxLogMessage("finished loading gxx model from file");
 
-        std::unique_ptr<render::Model> model;
+        const auto load_as_model = (flags_ & eGxxLoaderLoadAsModel) == eGxxLoaderLoadAsModel;
+        if (load_as_model) {
+            wxLogMessage("gxx load as model enabled!");
+
+            std::unique_ptr<render::Model> model;
+            try {
+                ConvWxLogger logger;
+                model = conv::ConvertGXX(gxx_model.value(), &device, &repository, &logger);
+            } catch (const std::exception &e) {
+                wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
+                return nullptr;
+            }
+
+            return std::make_unique<ModelViewer::ModelProxyModel>(std::move(model));
+        }
+
+        std::unique_ptr<render::Drawlist> drawlist;
         try {
             ConvWxLogger logger;
-            model = conv::ConvertGXX(gxx_model.value(), &device, &repository, &logger);
+            drawlist = conv::ConvertGXXDrawlist(gxx_model.value(), &device, &repository, &logger);
         } catch (const std::exception &e) {
             wxLogError(wxString::Format("libconv fatal error: %s", e.what()));
             return nullptr;
         }
 
-        return model;
+        return std::make_unique<ModelViewer::ModelProxyDrawlist>(std::move(drawlist));
     }
 
 private:
     std::span<const uint8_t> gxx_buffer_;
     std::string directory_;
+    uint32_t flags_ = 0;
 };
 
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
@@ -570,6 +598,15 @@ auto ModelBrowserFrame::OpenNewFile(const wxString &full_path) -> void {
         return;
     }
 
+    HandleNewFile();
+}
+
+auto ModelBrowserFrame::ReloadCurrentFile() -> void {
+    CloseCurrentFile();
+    HandleNewFile();
+}
+
+auto ModelBrowserFrame::HandleNewFile() -> void {
     hex_viewer_ = new HexViewer(notebook_right_, wxID_ANY, wxDefaultPosition, wxDefaultSize, current_file_);
     hex_viewer_->SetBufferView(current_file_);
     hex_viewer_->Show();
@@ -587,9 +624,14 @@ auto ModelBrowserFrame::OpenNewFile(const wxString &full_path) -> void {
             std::make_unique<ActLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "ACT Model view", true);
     } else if (gxx::CheckHeader(current_file_)) {
+        uint32_t gxx_load_flags = 0;
+        if (preferences_.enable_gxx_interpolation) {
+            gxx_load_flags |= GxxLoader::eGxxLoaderLoadAsModel;
+        }
+
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GxxLoader>(current_file_, std::string{working_dir_}), ModelViewer::MakeOrthoCamera(),
-            notebook_right_);
+            std::make_unique<GxxLoader>(current_file_, std::string{working_dir_}, gxx_load_flags),
+            ModelViewer::MakeOrthoCamera(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GXX Model view", true);
     }
 
@@ -629,6 +671,14 @@ auto ModelBrowserFrame::OnResetView([[maybe_unused]] wxCommandEvent &event) -> v
         model_viewer_->ResetView();
     } else if (texture_viewer_) {
         texture_viewer_->ResetView();
+    }
+}
+
+auto ModelBrowserFrame::OnEnableGxxInterpolation(wxCommandEvent &event) -> void {
+    preferences_.enable_gxx_interpolation = event.IsChecked();
+
+    if (model_viewer_) {
+        ReloadCurrentFile();
     }
 }
 

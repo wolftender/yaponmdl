@@ -28,6 +28,11 @@ private:
 };
 
 class ModelBrowserFrame : public wxFrame {
+private:
+    struct Preferences {
+        bool enable_gxx_interpolation = false;
+    };
+
 public:
     ModelBrowserFrame();
 
@@ -35,6 +40,8 @@ private:
     auto SetWorkingDirectory(const wxString &working_dir) -> void;
     auto CloseCurrentFile() -> void;
     auto OpenNewFile(const wxString &full_path) -> void;
+    auto ReloadCurrentFile() -> void;
+    auto HandleNewFile() -> void;
 
     auto OnExit(wxCommandEvent &event) -> void;
     auto OnAbout(wxCommandEvent &event) -> void;
@@ -50,8 +57,11 @@ private:
     auto OnZoomOut(wxCommandEvent &event) -> void;
     auto OnZoomIn(wxCommandEvent &event) -> void;
     auto OnResetView(wxCommandEvent &event) -> void;
+    auto OnEnableGxxInterpolation(wxCommandEvent &event) -> void;
 
     auto EnableViewerOptions(bool enabled) -> void;
+
+    Preferences preferences_;
 
     ConstrainedSplitter *splitter_ = nullptr;
     wxNotebook *notebook_left_ = nullptr;

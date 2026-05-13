@@ -487,4 +487,191 @@ auto ConvertGXX(
     return model;
 }
 
+auto ConvertGXXDrawlist(
+    const gxx::GxxModel &gxx_model, render::hal::IDevice *device, const ITextureRepository *repository,
+    const IConvertLogger *logger) -> std::unique_ptr<render::Drawlist> {
+    ConvertConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
+    using AnyMeshId =
+        std::variant<render::Drawlist::VertexBufferId, render::Drawlist::SkinnedVertexBufferId, std::monostate>;
+
+    auto drawlist = std::make_unique<render::Drawlist>(device);
+
+    std::vector<std::pair<render::Drawlist::NodeId, uint32_t>> bone_map;
+    std::vector<render::Drawlist::TextureId> texture_map;
+    std::vector<AnyMeshId> mesh_map;
+
+    for (const auto &gxx_node : gxx_model.nodes) {
+        const auto bone_id = drawlist->AddNamedNode(gxx_node.name);
+        if (!bone_id.has_value()) {
+            throw std::runtime_error{"failed to allocate drawlist node"};
+        }
+
+        bone_map.push_back({bone_id.value(), gxx_node.ge_matrix_offs});
+    }
+
+    for (const auto &gxx_texture : gxx_model.textures) {
+        const auto bitmap = FetchBitmap(repository, gxx_texture.name);
+        const auto texture_id = drawlist->AddRgbaTexture(bitmap.width, bitmap.height, bitmap.plane);
+
+        if (!texture_id.has_value()) {
+            throw std::runtime_error{"failed to allocate drawlist texture"};
+        }
+
+        texture_map.push_back(texture_id.value());
+    }
+
+    for (uint32_t gxx_mesh_id = 0; gxx_mesh_id < gxx_model.meshes.size(); ++gxx_mesh_id) {
+        const auto &gxx_mesh = gxx_model.meshes[gxx_mesh_id];
+        if (gxx_mesh.num_weights == 0) {
+            std::vector<render::StaticVertex> vertices;
+            vertices.reserve(gxx_mesh.vertices.size());
+
+            std::transform(
+                gxx_mesh.vertices.begin(), gxx_mesh.vertices.end(), std::back_inserter(vertices),
+                [&](const gxx::GxxVertex &gxx_vertex) {
+                render::StaticVertex vertex;
+                vertex.position = gxx_vertex.position;
+                vertex.color = gxx_vertex.color;
+                vertex.normal = gxx_vertex.normal;
+                vertex.uv = gxx_vertex.uv;
+
+                return vertex;
+            });
+
+            const auto vertex_buffer_id =
+                gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
+                    ? drawlist->AddVertexBuffer(vertices, gxx_mesh.indices)
+                    : drawlist->AddVertexBuffer(vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type));
+            if (!vertex_buffer_id.has_value()) {
+                throw std::runtime_error{"failed to allocate drawlist vertex buffer"};
+            }
+
+            mesh_map.emplace_back(vertex_buffer_id.value());
+        } else {
+            std::vector<render::AnimatedVertex> vertices;
+            vertices.reserve(gxx_mesh.vertices.size());
+
+            std::transform(
+                gxx_mesh.vertices.begin(), gxx_mesh.vertices.end(), std::back_inserter(vertices),
+                [&](const gxx::GxxVertex &gxx_vertex) {
+                render::StaticVertex vertex;
+                vertex.position = gxx_vertex.position;
+                vertex.color = gxx_vertex.color;
+                vertex.normal = gxx_vertex.normal;
+                vertex.uv = gxx_vertex.uv;
+
+                for (uint32_t i = 0; i < gxx_mesh.num_weights; ++i) {
+                    vertex.weights[i] = gxx_vertex.weights[i];
+                    vertex.bones[i] = i;
+                }
+
+                return vertex;
+            });
+
+            const auto vertex_buffer_id =
+                gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
+                    ? drawlist->AddSkinnedVertexBuffer(vertices, gxx_mesh.indices)
+                    : drawlist->AddSkinnedVertexBuffer(
+                          vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type));
+            if (!vertex_buffer_id.has_value()) {
+                throw std::runtime_error{"failed to allocate drawlist vertex buffer"};
+            }
+
+            mesh_map.emplace_back(vertex_buffer_id.value());
+        }
+    }
+
+    for (const auto &gxx_motion : gxx_model.animations) {
+        drawlist->AddMotion(gxx_motion.name, [&](render::Drawlist::Motion &motion) -> void {
+            const float delta_time = 1.0f / gxx_motion.framerate;
+
+            for (uint32_t i = 0; i < gxx_motion.num_frames; ++i) {
+                const auto &gxx_frame = gxx_motion.frames[i];
+
+                render::Drawlist::Motion::Frame frame{static_cast<float>(i) * delta_time};
+                for (const auto &gxx_list : gxx_frame.list) {
+                    if (!gxx_list.mesh.has_value()) {
+                        continue;
+                    }
+
+                    std::optional<render::Drawlist::TextureId> diffuse_map = std::nullopt;
+                    if (gxx_list.texture.has_value()) {
+                        diffuse_map = texture_map[gxx_list.texture.value()];
+                    }
+
+                    if (gxx_list.num_weights == 0) {
+                        // regular draw
+                        if (!std::holds_alternative<render::Drawlist::VertexBufferId>(
+                                mesh_map[gxx_list.mesh.value()])) {
+                            throw std::runtime_error{fmt::format(
+                                "gxx references {} mesh but this is not a valid unskinned mesh",
+                                gxx_list.mesh.value())};
+                        }
+
+                        const auto mesh_id =
+                            std::get<render::Drawlist::VertexBufferId>(mesh_map[gxx_list.mesh.value()]);
+
+                        render::Drawlist::Motion::DrawCommand command = {
+                            .mesh = mesh_id,
+                            .parameters =
+                                {
+                                    .diffuse_map = diffuse_map,
+                                    .uv_offset = gxx_list.uv_offset,
+                                    .uv_scale = gxx_list.uv_scale,
+                                    .color = gxx_list.albedo_color,
+                                    .world_matix = gxx_list.world_matrix,
+                                },
+                        };
+
+                        frame.AppendCommand(std::move(command));
+                    } else {
+                        // skinned draw
+                        if (!std::holds_alternative<render::Drawlist::SkinnedVertexBufferId>(
+                                mesh_map[gxx_list.mesh.value()])) {
+                            throw std::runtime_error{fmt::format(
+                                "gxx references {} mesh but this is not a valid skinned mesh", gxx_list.mesh.value())};
+                        }
+
+                        const auto mesh_id =
+                            std::get<render::Drawlist::SkinnedVertexBufferId>(mesh_map[gxx_list.mesh.value()]);
+
+                        const auto skin_id = drawlist->AddSkin(gxx_list.bone_matrices);
+                        if (!skin_id.has_value()) {
+                            throw std::runtime_error{"failed to allocate drawlist skin"};
+                        }
+
+                        render::Drawlist::Motion::SkinnedDrawCommand command = {
+                            .mesh = mesh_id,
+                            .skin = skin_id.value(),
+                            .parameters =
+                                {
+                                    .diffuse_map = diffuse_map,
+                                    .uv_offset = gxx_list.uv_offset,
+                                    .uv_scale = gxx_list.uv_scale,
+                                    .color = gxx_list.albedo_color,
+                                    .world_matix = gxx_list.world_matrix,
+                                },
+                        };
+
+                        frame.AppendCommand(std::move(command));
+                    }
+                }
+
+                for (uint32_t gxx_matrix_id = 0; gxx_matrix_id < gxx_frame.node_matrices.size(); ++gxx_matrix_id) {
+                    const auto named_node_id = bone_map[gxx_matrix_id].first;
+                    frame.SetNodeOffset(named_node_id, gxx_frame.node_matrices[gxx_matrix_id]);
+                }
+
+                motion.AppendFrame(std::move(frame));
+            }
+        });
+    }
+
+    return drawlist;
+}
+
 } // namespace conv

@@ -4,6 +4,7 @@
 #include "formats/gxx.hpp"
 
 #include "render/model.hpp"
+#include "render/drawlist.hpp"
 
 namespace conv {
 
@@ -32,6 +33,10 @@ public:
 auto ConvertGXX(
     const gxx::GxxModel &gxx_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,
     const IConvertLogger *logger = nullptr) -> std::unique_ptr<render::Model>;
+
+auto ConvertGXXDrawlist(
+    const gxx::GxxModel &gxx_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,
+    const IConvertLogger *logger = nullptr) -> std::unique_ptr<render::Drawlist>;
 
 auto ConvertGMO(
     const gmo::GmoModel &gmo_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,

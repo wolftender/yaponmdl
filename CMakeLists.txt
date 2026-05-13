@@ -126,6 +126,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/graphics/texture.cpp
     ${PROGRAM_SRC_DIR}/graphics/framebuffer.cpp
     ${PROGRAM_SRC_DIR}/render/model.cpp
+    ${PROGRAM_SRC_DIR}/render/drawlist.cpp
     ${PROGRAM_SRC_DIR}/render/text.cpp
     ${PROGRAM_SRC_DIR}/render/device.cpp
     ${PROGRAM_SRC_DIR}/render/camera.cpp
