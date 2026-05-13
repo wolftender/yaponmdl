@@ -27,7 +27,7 @@ private:
     auto OnPlayPressed(wxCommandEvent &event) -> void;
     auto OnSliderUpdated(wxCommandEvent &event) -> void;
 
-    auto BuildAnimationLayout(const std::vector<std::string> &animations) -> void;
+    auto BuildAnimationLayout(std::span<const std::string> animations) -> void;
     auto BuildStaticLayout() -> void;
 
     wxBoxSizer *sizer_ = nullptr;

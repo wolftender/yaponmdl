@@ -5,6 +5,7 @@
 
 #include "render/camera.hpp"
 #include "render/model.hpp"
+#include "render/drawlist.hpp"
 #include "render/device.hpp"
 #include "render/text.hpp"
 
@@ -31,10 +32,104 @@ private:
 
 class ModelViewer : public GLView {
 public:
+    class IModelProxy {
+    public:
+        virtual ~IModelProxy() noexcept = default;
+
+        virtual auto HasAnimations() const -> bool = 0;
+
+        virtual auto GetLoop() const -> bool = 0;
+        virtual auto GetPaused() const -> bool = 0;
+        virtual auto GetAnimationDuration() const -> float = 0;
+        virtual auto GetAnimationTime() const -> float = 0;
+        virtual auto GetAnimationList() const -> std::span<const std::string> = 0;
+
+        virtual auto SetPaused(bool paused) -> void = 0;
+        virtual auto SetLoop(bool loop) -> void = 0;
+        virtual auto Seek(float time) -> void = 0;
+        virtual auto SetAnimationIndex(uint32_t index) -> void = 0;
+
+        virtual auto Integrate(float delta_time) -> void = 0;
+        virtual auto Render(const glm::fmat4x4 &world_matrix) -> void = 0;
+    };
+
     class ILoader {
     public:
         virtual ~ILoader() noexcept = default;
-        virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<render::Model> = 0;
+        virtual auto Load(render::hal::IDevice &device) const -> std::unique_ptr<IModelProxy> = 0;
+    };
+
+    class ModelProxyModel : public IModelProxy {
+    public:
+        ModelProxyModel(std::unique_ptr<render::Model> model);
+
+        ModelProxyModel(const ModelProxyModel &) = delete;
+        auto operator=(ModelProxyModel &) = delete;
+
+        ModelProxyModel(ModelProxyModel &&) noexcept = default;
+        auto operator=(ModelProxyModel &&) noexcept -> ModelProxyModel & = default;
+
+        auto HasAnimations() const -> bool override;
+
+        auto GetLoop() const -> bool override;
+        auto GetPaused() const -> bool override;
+        auto GetAnimationDuration() const -> float override;
+        auto GetAnimationTime() const -> float override;
+        auto GetAnimationList() const -> std::span<const std::string> override;
+
+        auto SetPaused(bool paused) -> void override;
+        auto SetLoop(bool loop) -> void override;
+        auto Seek(float time) -> void override;
+        auto SetAnimationIndex(uint32_t index) -> void override;
+
+        auto Integrate(float delta_time) -> void override;
+        auto Render(const glm::fmat4x4 &world_matrix) -> void override;
+
+    private:
+        bool paused_ = false;
+
+        std::optional<render::Model::Controller> controller_;
+        std::unique_ptr<render::Model::Pose> bind_pose_;
+        std::unique_ptr<render::Model> model_;
+
+        std::vector<std::string> animation_names_;
+        std::vector<render::Model::AnimationId> animations_;
+    };
+
+    class ModelProxyDrawlist : public IModelProxy {
+    public:
+        ModelProxyDrawlist(std::unique_ptr<render::Drawlist> drawlist);
+
+        ModelProxyDrawlist(const ModelProxyDrawlist &) = delete;
+        auto operator=(ModelProxyDrawlist &) = delete;
+
+        ModelProxyDrawlist(ModelProxyDrawlist &&) noexcept = default;
+        auto operator=(ModelProxyDrawlist &&) noexcept -> ModelProxyDrawlist & = default;
+
+        auto HasAnimations() const -> bool override;
+
+        auto GetLoop() const -> bool override;
+        auto GetPaused() const -> bool override;
+        auto GetAnimationDuration() const -> float override;
+        auto GetAnimationTime() const -> float override;
+        auto GetAnimationList() const -> std::span<const std::string> override;
+
+        auto SetPaused(bool paused) -> void override;
+        auto SetLoop(bool loop) -> void override;
+        auto Seek(float time) -> void override;
+        auto SetAnimationIndex(uint32_t index) -> void override;
+
+        auto Integrate(float delta_time) -> void override;
+        auto Render(const glm::fmat4x4 &world_matrix) -> void override;
+
+    private:
+        bool paused_ = false;
+
+        std::optional<render::Drawlist::Controller> controller_;
+        std::unique_ptr<render::Drawlist> drawlist_;
+
+        std::vector<std::string> animation_names_;
+        std::vector<render::Drawlist::MotionId> animations_;
     };
 
     class ICameraController {
@@ -110,8 +205,8 @@ public:
         std::unique_ptr<ICameraController> camera_controller = MakeAzimuthCamera());
 
     auto GetFps() const -> uint32_t { return fps_; }
-    auto GetModel() const -> const render::Model * { return model_.get(); }
-    auto GetAnimationList() const -> std::vector<std::string>;
+    auto GetModel() const -> const IModelProxy * { return model_proxy_.get(); }
+    auto GetAnimationList() const -> std::span<const std::string>;
 
     auto GetAnimationIndex() const -> uint32_t { return anim_counter_; }
     auto SetAnimationIndex(uint32_t index) -> void;
@@ -123,8 +218,8 @@ public:
     auto GetCurrentAnimationTime() const -> float;
     auto GetCurrentAnimationDuration() const -> float;
 
-    auto IsCurrentAnimationPaused() const -> bool { return is_anim_paused_; }
-    auto SetCurrentAnimationPaused(bool paused) -> void { is_anim_paused_ = paused; }
+    auto IsCurrentAnimationPaused() const -> bool;
+    auto SetCurrentAnimationPaused(bool paused) -> void;
 
     auto SeekCurrentAnimation(float time) -> void;
 
@@ -166,7 +261,6 @@ private:
     uint32_t anim_counter_ = 0;
     uint32_t fps_ = 0;
     float frame_timer_ = 0.0f;
-    bool is_anim_paused_ = false;
 
     std::unique_ptr<ICameraController> camera_controller_;
 
@@ -179,9 +273,7 @@ private:
     std::chrono::steady_clock::time_point last_frame_;
 
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
-    std::unique_ptr<render::Model> model_;
-    std::optional<render::Model::Controller> controller_;
-    std::unique_ptr<render::Model::Pose> default_pose_;
+    std::unique_ptr<IModelProxy> model_proxy_;
 
     State state_ = ModelViewer::State::eIdle;
 };

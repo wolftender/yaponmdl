@@ -6,6 +6,160 @@
 wxDEFINE_EVENT(MODEL_VIEWER_LOADED_MODEL, wxCommandEvent);
 wxDEFINE_EVENT(MODEL_VIEWER_FRAME, ModelViewerFrameEvent);
 
+ModelViewer::ModelProxyModel::ModelProxyModel(std::unique_ptr<render::Model> model) {
+    model_ = std::move(model);
+    bind_pose_ = model_->CreatePose();
+    animations_ = model_->MakeAnimationList();
+
+    if (!animations_.empty()) {
+        controller_ = model_->CreateController(animations_.front());
+    }
+
+    // cache animation names
+    animation_names_.reserve(animations_.size());
+
+    for (const auto &animation_id : animations_) {
+        const auto *animation = model_->GetAnimation(animation_id);
+        if (!animation) {
+            wxLogError("model assertion failed for animation list");
+            continue;
+        }
+
+        animation_names_.push_back(animation->GetName());
+    }
+}
+
+auto ModelViewer::ModelProxyModel::HasAnimations() const -> bool { return !animations_.empty(); }
+
+auto ModelViewer::ModelProxyModel::GetLoop() const -> bool {
+    if (controller_) {
+        return controller_->GetLoop();
+    }
+
+    return false;
+}
+
+auto ModelViewer::ModelProxyModel::GetPaused() const -> bool { return paused_; }
+
+auto ModelViewer::ModelProxyModel::GetAnimationDuration() const -> float {
+    if (controller_) {
+        return controller_->GetDuration();
+    }
+
+    return 0.0f;
+}
+
+auto ModelViewer::ModelProxyModel::GetAnimationTime() const -> float {
+    if (controller_) {
+        return controller_->GetTime();
+    }
+
+    return 0.0f;
+}
+
+auto ModelViewer::ModelProxyModel::GetAnimationList() const -> std::span<const std::string> { return animation_names_; }
+
+auto ModelViewer::ModelProxyModel::SetPaused(bool paused) -> void { paused_ = paused; };
+
+auto ModelViewer::ModelProxyModel::SetLoop(bool loop) -> void {
+    if (controller_) {
+        controller_->SetLoop(loop);
+    }
+}
+
+auto ModelViewer::ModelProxyModel::Seek(float time) -> void {
+    if (controller_) {
+        const auto loop = controller_->GetLoop();
+
+        controller_->SetLoop(false);
+        controller_->Seek(time);
+        controller_->SetLoop(loop);
+    }
+}
+
+auto ModelViewer::ModelProxyModel::SetAnimationIndex(uint32_t index) -> void {
+    if (controller_ && index < animations_.size()) {
+        controller_->SetAnimation(animations_[index]);
+        controller_->Integrate(0.0f);
+    }
+}
+
+auto ModelViewer::ModelProxyModel::Integrate(float delta_time) -> void {
+    if (controller_ && !paused_) {
+        controller_->Integrate(delta_time);
+    }
+}
+
+auto ModelViewer::ModelProxyModel::Render(const glm::fmat4x4 &world_matrix) -> void {
+    if (controller_) {
+        model_->Render(controller_->GetPose(), world_matrix);
+    } else {
+        model_->Render(*bind_pose_, world_matrix);
+    }
+}
+
+ModelViewer::ModelProxyDrawlist::ModelProxyDrawlist(std::unique_ptr<render::Drawlist> drawlist) {
+    drawlist_ = std::move(drawlist);
+    animations_ = drawlist_->MakeMotionList();
+
+    if (animations_.empty()) {
+        throw std::runtime_error{"selected drawlist is not renderable because it has no frames to render"};
+    }
+
+    controller_ = drawlist_->CreateController(animations_.front());
+
+    // cache animation names
+    animation_names_.reserve(animations_.size());
+
+    for (const auto &animation_id : animations_) {
+        const auto *animation = drawlist_->GetMotion(animation_id);
+        if (!animation) {
+            wxLogError("model assertion failed for animation list");
+            continue;
+        }
+
+        animation_names_.push_back(std::string{animation->GetName()});
+    }
+}
+
+auto ModelViewer::ModelProxyDrawlist::HasAnimations() const -> bool { return !animations_.empty(); }
+auto ModelViewer::ModelProxyDrawlist::GetLoop() const -> bool { return controller_->GetLoop(); }
+auto ModelViewer::ModelProxyDrawlist::GetPaused() const -> bool { return paused_; }
+auto ModelViewer::ModelProxyDrawlist::GetAnimationDuration() const -> float { return controller_->GetDuration(); }
+auto ModelViewer::ModelProxyDrawlist::GetAnimationTime() const -> float { return controller_->GetTime(); }
+
+auto ModelViewer::ModelProxyDrawlist::GetAnimationList() const -> std::span<const std::string> {
+    return animation_names_;
+}
+
+auto ModelViewer::ModelProxyDrawlist::SetPaused(bool paused) -> void { paused_ = paused; };
+auto ModelViewer::ModelProxyDrawlist::SetLoop(bool loop) -> void { controller_->SetLoop(loop); }
+
+auto ModelViewer::ModelProxyDrawlist::Seek(float time) -> void {
+    const auto loop = controller_->GetLoop();
+
+    controller_->SetLoop(false);
+    controller_->Seek(time);
+    controller_->SetLoop(loop);
+}
+
+auto ModelViewer::ModelProxyDrawlist::SetAnimationIndex(uint32_t index) -> void {
+    if (index < animations_.size()) {
+        controller_->SetMotion(animations_[index]);
+        controller_->Integrate(0.0f);
+    }
+}
+
+auto ModelViewer::ModelProxyDrawlist::Integrate(float delta_time) -> void {
+    if (!paused_) {
+        controller_->Integrate(delta_time);
+    }
+}
+
+auto ModelViewer::ModelProxyDrawlist::Render(const glm::fmat4x4 &world_matrix) -> void {
+    controller_->Render(world_matrix);
+}
+
 ModelViewer::AzimuthCameraController::AzimuthCameraController() {
     camera_.SetNear(0.1f);
     camera_.SetFar(300.0f);
@@ -150,40 +304,17 @@ ModelViewer::ModelViewer(
     Bind(wxEVT_MOTION, &ModelViewer::OnMouseMotion, this);
 }
 
-auto ModelViewer::GetAnimationList() const -> std::vector<std::string> {
-    if (!model_) {
-        return {};
+auto ModelViewer::GetAnimationList() const -> std::span<const std::string> {
+    if (model_proxy_) {
+        return model_proxy_->GetAnimationList();
     }
 
-    std::vector<std::string> animation_list;
-    const auto animations = model_->MakeAnimationList();
-
-    animation_list.reserve(animations.size());
-
-    for (const auto &animation_id : animations) {
-        const auto *animation = model_->GetAnimation(animation_id);
-        if (!animation) {
-            wxLogError("model assertion failed for animation list");
-            return {};
-        }
-
-        animation_list.push_back(animation->GetName());
-    }
-
-    return animation_list;
+    return {};
 }
 
 auto ModelViewer::SetAnimationIndex(uint32_t index) -> void {
-    const auto animations = model_->MakeAnimationList();
-    if (index >= animations.size()) {
-        anim_counter_ = animations.size() - 1;
-    } else {
-        anim_counter_ = index;
-    }
-
-    if (controller_) {
-        controller_->SetAnimation(animations[anim_counter_]);
-        controller_->Integrate(0.0f); // this is needed to tick the controller once if it is paused
+    if (model_proxy_) {
+        model_proxy_->SetAnimationIndex(index);
     }
 
     RefreshText();
@@ -208,25 +339,38 @@ auto ModelViewer::ResetView() -> void {
 }
 
 auto ModelViewer::GetCurrentAnimationTime() const -> float {
-    if (!controller_) {
-        return 0.0f;
+    if (model_proxy_) {
+        return model_proxy_->GetAnimationTime();
     }
 
-    return controller_->GetTime();
+    return 0.0f;
 }
 
 auto ModelViewer::GetCurrentAnimationDuration() const -> float {
-    if (!controller_) {
-        return 0.0f;
+    if (model_proxy_) {
+        return model_proxy_->GetAnimationDuration();
     }
 
-    return controller_->GetDuration();
+    return 0.0f;
+}
+
+auto ModelViewer::IsCurrentAnimationPaused() const -> bool {
+    if (model_proxy_) {
+        return model_proxy_->GetPaused();
+    }
+
+    return true;
+}
+
+auto ModelViewer::SetCurrentAnimationPaused(bool paused) -> void {
+    if (model_proxy_) {
+        model_proxy_->SetPaused(paused);
+    }
 }
 
 auto ModelViewer::SeekCurrentAnimation(float time) -> void {
-    if (controller_) {
-        controller_->Seek(time);
-        controller_->Integrate(0.0f);
+    if (model_proxy_) {
+        model_proxy_->Seek(time);
     }
 }
 
@@ -260,23 +404,10 @@ auto ModelViewer::OnInitializeGL() -> void {
         return;
     }
 
-    model_ = model_loader_->Load(*device_);
+    model_proxy_ = model_loader_->Load(*device_);
 
-    if (!model_) {
+    if (!model_proxy_) {
         wxLogError("no models were loaded");
-        state_ = State::eInvalidModel;
-        return;
-    }
-
-    try {
-        const auto animations = model_->MakeAnimationList();
-        if (animations.empty()) {
-            default_pose_ = model_->CreatePose();
-        } else {
-            controller_ = model_->CreateController(model_->MakeAnimationList().front());
-        }
-    } catch (const std::exception &e) {
-        wxLogError(wxString::Format("cannot initialize model controller: %s", e.what()));
         state_ = State::eInvalidModel;
         return;
     }
@@ -323,9 +454,7 @@ auto ModelViewer::OnRender() -> void {
         return;
     }
 
-    if (controller_.has_value() && !is_anim_paused_) {
-        controller_->Integrate(delta_time);
-    }
+    model_proxy_->Integrate(delta_time);
 
     const auto current_size = GetSize();
     const auto f_sw = static_cast<float>(current_size.x);
@@ -339,12 +468,7 @@ auto ModelViewer::OnRender() -> void {
 
     glm::fmat4x4 transform = glm::fmat4x4{1.0f};
 
-    if (model_ && controller_.has_value()) {
-        model_->Render(controller_->GetPose(), transform);
-    } else if (model_ && default_pose_) {
-        model_->Render(*default_pose_.get(), transform);
-    }
-
+    model_proxy_->Render(transform);
     device_->RenderFrame(camera_controller_->GetCamera());
 
     // clang-format off
@@ -394,12 +518,13 @@ auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
 }
 
 auto ModelViewer::RefreshText() -> void {
-    const auto animations = model_ ? model_->MakeAnimationList() : std::vector<render::Model::AnimationId>{};
+    static std::vector<std::string> kEmptyAnimList;
+
+    const auto animations = model_proxy_ ? model_proxy_->GetAnimationList() : kEmptyAnimList;
     std::string content;
 
     if (animations.size() != 0 && anim_counter_ < animations.size()) {
-        content =
-            fmt::format("fps: {}\nanimation: {}", fps_, model_->GetAnimation(animations[anim_counter_])->GetName());
+        content = fmt::format("fps: {}\nanimation: {}", fps_, animations[anim_counter_]);
     } else {
         content = fmt::format("fps: {}\nanimation: n/a", fps_);
     }
