@@ -587,7 +587,9 @@ auto ConvertGXXDrawlist(
     }
 
     for (const auto &gxx_motion : gxx_model.animations) {
-        drawlist->AddMotion(gxx_motion.name, [&](render::Drawlist::Motion &motion) -> void {
+        const auto duration =
+            gxx_motion.num_frames > 1 ? static_cast<float>(gxx_motion.num_frames - 1) / gxx_motion.framerate : 0.0f;
+        drawlist->AddMotion(gxx_motion.name, duration, [&](render::Drawlist::Motion &motion) -> void {
             const float delta_time = 1.0f / gxx_motion.framerate;
 
             for (uint32_t i = 0; i < gxx_motion.num_frames; ++i) {
