@@ -231,7 +231,7 @@ public:
         auto Sort() -> void;
 
     private:
-        Motion(std::string_view name) : name_{name} {}
+        Motion(std::string_view name, float duration) : name_{name}, duration_{duration} {}
 
         std::string name_;
         float duration_ = 0.0f;
@@ -332,8 +332,9 @@ public:
         uint32_t width, uint32_t height, std::span<const uint8_t> range, const glm::fvec2 &uv_offset,
         const glm::fvec2 &uv_scale) -> std::optional<TextureId>;
 
-    template <std::invocable<Motion &> F> auto AddMotion(std::string_view name, F builder) -> std::optional<MotionId> {
-        Motion motion{name};
+    template <std::invocable<Motion &> F>
+    auto AddMotion(std::string_view name, float duration, F builder) -> std::optional<MotionId> {
+        Motion motion{name, duration};
         builder(motion);
 
         motion.Sort();

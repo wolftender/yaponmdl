@@ -168,12 +168,18 @@ auto Drawlist::Controller::UpdateMotion(const Motion &motion) -> void {
     const auto keyframes = motion.GetFrames();
     if (time_ >= next_frame_time_) {
         const auto num_keyframes = static_cast<uint32_t>(keyframes.size());
-        while (current_frame_ < num_keyframes && keyframes[current_frame_].GetTime() < time_) {
+
+        do {
             current_frame_++;
-        }
+        } while (current_frame_ < (num_keyframes - 1) && keyframes[current_frame_ + 1].GetTime() < time_);
 
         current_frame_time_ = keyframes[current_frame_].GetTime();
-        next_frame_time_ = keyframes[std::min(current_frame_ + 1, num_keyframes - 1)].GetTime();
+
+        if (current_frame_ < num_keyframes - 1) {
+            next_frame_time_ = keyframes[current_frame_ + 1].GetTime();
+        } else {
+            next_frame_time_ = motion.GetDuration();
+        }
     }
 }
 

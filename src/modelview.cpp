@@ -435,8 +435,7 @@ auto ModelViewer::OnRender() -> void {
     }
 
     const auto now = std::chrono::steady_clock::now();
-    const auto delta_time =
-        static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(now - last_frame_).count()) * 10e-7f;
+    const auto delta_time = std::chrono::duration<float>(now - last_frame_).count();
     last_frame_ = now;
 
     frame_timer_ += delta_time;
