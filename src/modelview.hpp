@@ -146,6 +146,8 @@ public:
     public:
         virtual ~ICameraController() noexcept = default;
 
+        virtual auto GetAllowGrid() const -> bool = 0;
+
         virtual auto ZoomOut() -> void = 0;
         virtual auto ZoomIn() -> void = 0;
         virtual auto ResetView() -> void = 0;
@@ -163,6 +165,7 @@ public:
         AzimuthCameraController();
 
         auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
+        auto GetAllowGrid() const -> bool override { return true; }
 
         auto ZoomOut() -> void override;
         auto ZoomIn() -> void override;
@@ -188,6 +191,7 @@ public:
         OrthoCameraController();
 
         auto GetCamera() const -> const render::hal::ICamera & override { return camera_; }
+        auto GetAllowGrid() const -> bool override { return false; }
 
         auto ZoomOut() -> void override;
         auto ZoomIn() -> void override;
@@ -282,6 +286,7 @@ private:
 
     auto CalculateModelScale() -> void;
     auto RefreshText() -> void;
+    auto ApplyGridSettings() -> void;
 
     std::unique_ptr<ILoader> model_loader_ = nullptr;
 

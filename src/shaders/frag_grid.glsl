@@ -12,8 +12,7 @@ uniform mat4 u_view;
 uniform mat4 u_projection;
 uniform mat4 u_view_inv;
 uniform mat4 u_projection_inv;
-
-const float kAxisWidth = 0.5f;
+uniform float u_grid_scale;
 
 vec4 grid(vec3 frag_pos, float scale) {
     vec2 grid_plane_coord = frag_pos.xz * scale;
@@ -24,14 +23,19 @@ vec4 grid(vec3 frag_pos, float scale) {
 
     float min_z = min(dc.y, 1.0);
     float min_x = min(dc.x, 1.0);
-    vec4 color = vec4(0.2f, 0.2f, 0.2f, 1.0f - min(lc, 1.0f));
+    vec4 color = vec4(0.3f, 0.3f, 0.3f, 1.0f - min(lc, 1.0f));
 
-    if (frag_pos.x > -kAxisWidth * min_x && frag_pos.x < kAxisWidth * min_x) {
-        color.z = 1.0f;
+    float axis_width = 0.5f / u_grid_scale;
+    if (frag_pos.x > -axis_width * min_x && frag_pos.x < axis_width * min_x) {
+        color.x = 0.0;
+        color.y = 0.0;
+        color.z = 1.0;
     }
     
-    if (frag_pos.z > -kAxisWidth * min_z && frag_pos.z < kAxisWidth * min_z) {
-        color.x = 1.0f;
+    if (frag_pos.z > -axis_width * min_z && frag_pos.z < axis_width * min_z) {
+        color.x = 1.0;
+        color.y = 0.0;
+        color.z = 0.0;
     }
     
     return color;
@@ -48,8 +52,8 @@ void main() {
 
     vec3 frag_pos = fs_in.near_point + t * (fs_in.far_point - fs_in.near_point);
     
-    frag_color = grid(frag_pos, 1.0) * visiblity;
-    frag_color.a = frag_color.a * (1.0 - 0.02 * length(frag_pos.xz));
+    frag_color = grid(frag_pos, u_grid_scale) * visiblity;
+    frag_color.a = frag_color.a * (1.0 - 0.025 * length(frag_pos.xz) * sqrt(u_grid_scale));
 
     gl_FragDepth = calc_depth(frag_pos);
 }

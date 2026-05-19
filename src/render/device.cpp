@@ -44,17 +44,16 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::Execute(const ICamera &camera) -> 
         color_pass_fb_->ClearColorDepth(glm::fvec4{0.207f, 0.36f, 0.64f, 1.0f});
         GeometryPass(camera);
 
-        GL_CHECK(glDepthMask(GL_FALSE));
-
-        grid_shader_.Use([&](const gl::ShaderProgram::Context &context) {
-            context.SetUniform("u_view", camera.GetView());
-            context.SetUniform("u_projection", camera.GetProjection());
-            context.SetUniform("u_view_inv", camera.GetViewInv());
-            context.SetUniform("u_projection_inv", camera.GetProjectionInv());
-            screen_quad_.Draw();
-        });
-
-        GL_CHECK(glDepthMask(GL_TRUE));
+        if (device_->GetEnableGrid()) {
+            grid_shader_.Use([&](const gl::ShaderProgram::Context &context) {
+                context.SetUniform("u_view", camera.GetView());
+                context.SetUniform("u_projection", camera.GetProjection());
+                context.SetUniform("u_view_inv", camera.GetViewInv());
+                context.SetUniform("u_projection_inv", camera.GetProjectionInv());
+                context.SetUniform("u_grid_scale", device_->GetGridScale());
+                screen_quad_.Draw();
+            });
+        }
     });
 
     GL_CHECK(glDisable(GL_DEPTH_TEST));

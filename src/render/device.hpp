@@ -106,6 +106,12 @@ public:
     auto RenderFrame(const ICamera &camera) -> void;
     auto ResizeFrame(uint32_t width, uint32_t height) -> void;
 
+    auto GetEnableGrid() const -> bool { return enable_grid_; }
+    auto SetEnableGrid(bool enable) -> void { enable_grid_ = enable; }
+
+    auto GetGridScale() const -> float { return grid_scale_; }
+    auto SetGridScale(float scale) -> void { grid_scale_ = scale; }
+
 private:
     const gl::GLContext *context_ = nullptr;
     std::unique_ptr<ISceneRenderer> scene_renderer_;
@@ -117,6 +123,9 @@ private:
     util::GenerationalPool<gl::Mesh<AnimatedVertex>> anim_mesh_pool_;
     util::GenerationalPool<gl::Texture> texture_pool_;
     util::GenerationalPool<gl::UniformBuffer<cbModelSkinningBuffer>> skinning_pool_;
+
+    bool enable_grid_ = false;
+    float grid_scale_ = 1.0f;
 };
 
 } // namespace render::hal
