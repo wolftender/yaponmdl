@@ -18,6 +18,11 @@ RenderDeviceOpenGL40::BaseSceneRenderer::BaseSceneRenderer(
           memoryresource::GetVertShaderSkinnedMesh(),
           memoryresource::GetFragShaderMesh(),
       },
+      grid_shader_{
+          device_->context_->GetExecutor(),
+          memoryresource::GetVertShaderGrid(),
+          memoryresource::GetFragShaderGrid(),
+      },
       post_shader_{
           device_->context_->GetExecutor(),
           memoryresource::GetVertShaderPost(),
@@ -32,11 +37,23 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::Execute(const ICamera &camera) -> 
 
     GL_CHECK(glDisable(GL_CULL_FACE));
     GL_CHECK(glEnable(GL_DEPTH_TEST));
+    GL_CHECK(glDepthMask(GL_TRUE));
     GL_CHECK(glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE));
 
     color_pass_fb_->Use([&]() {
         color_pass_fb_->ClearColorDepth(glm::fvec4{0.207f, 0.36f, 0.64f, 1.0f});
         GeometryPass(camera);
+
+        if (device_->GetEnableGrid()) {
+            grid_shader_.Use([&](const gl::ShaderProgram::Context &context) {
+                context.SetUniform("u_view", camera.GetView());
+                context.SetUniform("u_projection", camera.GetProjection());
+                context.SetUniform("u_view_inv", camera.GetViewInv());
+                context.SetUniform("u_projection_inv", camera.GetProjectionInv());
+                context.SetUniform("u_grid_scale", device_->GetGridScale());
+                screen_quad_.Draw();
+            });
+        }
     });
 
     GL_CHECK(glDisable(GL_DEPTH_TEST));

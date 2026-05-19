@@ -514,9 +514,10 @@ auto ModelViewer::OrthoCameraController::SetCameraParameters() -> void {
 ModelViewer::ModelViewer(
     wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
     std::unique_ptr<ICameraController> camera_controller)
-    : GLView{parent, attributes}, model_loader_{std::move(loader)}, camera_controller_{std::move(camera_controller)},
+    : GLView{parent, attributes}, model_loader_{std::move(loader)},
       font_context_{memoryresource::GetFontOpensansTtf()} {
 
+    SetCameraController(std::move(camera_controller));
     animation_timer_ = std::make_unique<AnimationTimer>(this);
 
     Bind(wxEVT_SIZE, &ModelViewer::OnSize, this);
@@ -594,6 +595,10 @@ auto ModelViewer::SetCurrentAnimationPaused(bool paused) -> void {
 auto ModelViewer::SetCameraController(std::unique_ptr<ICameraController> controller) -> void {
     if (controller) {
         camera_controller_ = std::move(controller);
+
+        if (device_) {
+            ApplyGridSettings();
+        }
     }
 }
 
@@ -625,6 +630,10 @@ auto ModelViewer::OnInitializeGL() -> void {
         wxLogError(wxString::Format("model viewer fatal error, cannot initialize renderer device: %s", e.what()));
         state_ = State::eGraphicsError;
         return;
+    }
+
+    if (camera_controller_) {
+        ApplyGridSettings();
     }
 
     if (!model_loader_) {
@@ -771,6 +780,10 @@ auto ModelViewer::CalculateModelScale() -> void {
     });
 
     model_scale_ = 1.0f / max_radius;
+
+    if (device_) {
+        ApplyGridSettings();
+    }
 }
 
 auto ModelViewer::RefreshText() -> void {
@@ -799,4 +812,17 @@ auto ModelViewer::RefreshText() -> void {
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("cannot update text: %s", e.what()));
     }
+}
+
+auto ModelViewer::ApplyGridSettings() -> void {
+    device_->SetEnableGrid(camera_controller_->GetAllowGrid());
+
+    auto grid_scale = 1.0f / model_scale_;
+
+    // prevent grid from being too tiny
+    if (grid_scale > 10.0f) {
+        grid_scale = 0.1f * grid_scale;
+    }
+
+    device_->SetGridScale(grid_scale);
 }
