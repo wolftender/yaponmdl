@@ -85,14 +85,16 @@ public:
         auto GetModel() const -> const Model & { return *model_; }
         auto GetHandle() const -> const hal::MeshHandle & { return handle_; }
         auto GetMaterial() const -> MaterialId { return material_; }
+        auto GetBounds() const -> const Bounds & { return bounds_; }
 
     private:
-        Mesh(Model *model, hal::MeshHandle handle, MaterialId material)
-            : model_{model}, handle_{std::move(handle)}, material_{material} {}
+        Mesh(Model *model, hal::MeshHandle handle, MaterialId material, const Bounds &bounds)
+            : model_{model}, handle_{std::move(handle)}, material_{material}, bounds_{bounds} {}
 
         Model *model_ = nullptr;
         hal::MeshHandle handle_;
         MaterialId material_;
+        Bounds bounds_;
 
         friend class Model;
     };
@@ -132,15 +134,17 @@ public:
         auto GetHandle() const -> const hal::AnimMeshHandle & { return handle_; }
         auto GetMaterial() const -> MaterialId { return material_; }
         auto GetSkin() const -> SkinId { return skin_; }
+        auto GetBounds() const -> const Bounds & { return bounds_; }
 
     private:
-        AnimatedMesh(Model *model, hal::AnimMeshHandle handle, MaterialId material, SkinId skin)
-            : model_{model}, handle_{std::move(handle)}, material_{material}, skin_{std::move(skin)} {}
+        AnimatedMesh(Model *model, hal::AnimMeshHandle handle, MaterialId material, SkinId skin, const Bounds &bounds)
+            : model_{model}, handle_{std::move(handle)}, material_{material}, skin_{std::move(skin)}, bounds_{bounds} {}
 
         Model *model_ = nullptr;
         hal::AnimMeshHandle handle_;
         MaterialId material_;
         SkinId skin_;
+        Bounds bounds_;
 
         friend class Model;
     };

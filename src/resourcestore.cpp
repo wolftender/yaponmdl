@@ -10,6 +10,8 @@
 #include "generated/frag_postfilter.glsl.h"
 #include "generated/vert_text.glsl.h"
 #include "generated/frag_text.glsl.h"
+#include "generated/vert_grid.glsl.h"
+#include "generated/frag_grid.glsl.h"
 #include "generated/opensans.ttf.h"
 
 namespace memoryresource {
@@ -52,6 +54,14 @@ auto GetVertShaderText() -> std::string_view {
 
 auto GetFragShaderText() -> std::string_view {
     return std::string_view{reinterpret_cast<const char *>(kFragText_glsl.data()), kFragText_glsl.size()};
+}
+
+auto GetVertShaderGrid() -> std::string_view {
+    return std::string_view{reinterpret_cast<const char *>(kVertGrid_glsl.data()), kVertGrid_glsl.size()};
+}
+
+auto GetFragShaderGrid() -> std::string_view {
+    return std::string_view{reinterpret_cast<const char *>(kFragGrid_glsl.data()), kFragGrid_glsl.size()};
 }
 
 auto GetFontOpensansTtf() -> std::span<const uint8_t> { return kOpensans_ttf; }

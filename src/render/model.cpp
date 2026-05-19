@@ -177,7 +177,7 @@ auto Model::AddMeshImpl(std::span<const StaticVertex> vertices, std::span<const 
     -> std::optional<MeshId> {
     auto mesh = device_->CreateMesh(vertices, indices);
 
-    meshes_.emplace_back(Mesh{this, std::move(mesh), material});
+    meshes_.emplace_back(Mesh{this, std::move(mesh), material, CalculateIndexedBounds(vertices, indices)});
     return MeshId{static_cast<uint32_t>(meshes_.size() - 1)};
 }
 
@@ -186,7 +186,8 @@ auto Model::AddAnimMeshImpl(
     -> std::optional<AnimatedMeshId> {
     auto mesh = device_->CreateAnimatedMesh(vertices, indices);
 
-    animated_meshes_.emplace_back(AnimatedMesh{this, std::move(mesh), material, std::move(skin)});
+    animated_meshes_.emplace_back(
+        AnimatedMesh{this, std::move(mesh), material, std::move(skin), CalculateIndexedBounds(vertices, indices)});
     return AnimatedMeshId{static_cast<uint32_t>(animated_meshes_.size()) - 1};
 }
 

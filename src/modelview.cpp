@@ -27,6 +27,65 @@ ModelViewer::ModelProxyModel::ModelProxyModel(std::unique_ptr<render::Model> mod
 
         animation_names_.push_back(animation->GetName());
     }
+
+    // calculate bounds in bind pose
+    constexpr auto kFloatMax = std::numeric_limits<float>::max();
+    constexpr auto kFloatMin = std::numeric_limits<float>::min();
+
+    bind_pose_bounds_.min = {kFloatMax, kFloatMax, kFloatMax};
+    bind_pose_bounds_.max = {kFloatMin, kFloatMin, kFloatMin};
+
+    uint32_t num_mesh_bounds = 0;
+    model_->IterateMeshNodes([&](render::Model::NodeId node_id, const render::Model::Node &node) -> void {
+        const auto *pose_node = bind_pose_->GetNode(node_id);
+        if (!pose_node) {
+            return;
+        }
+
+        const auto &node_transform = pose_node->GetTransform();
+        for (const auto &mesh_id : node.GetMeshes()) {
+            const auto *mesh = model_->GetMesh(mesh_id);
+            if (!mesh) {
+                continue;
+            }
+
+            const auto &mesh_min = node_transform * glm::fvec4{mesh->GetBounds().min, 1.0f};
+            const auto &mesh_max = node_transform * glm::fvec4{mesh->GetBounds().min, 1.0f};
+
+            num_mesh_bounds++;
+            bind_pose_bounds_.min.x = std::min(bind_pose_bounds_.min.x, mesh_min.x);
+            bind_pose_bounds_.min.y = std::min(bind_pose_bounds_.min.y, mesh_min.y);
+            bind_pose_bounds_.min.z = std::min(bind_pose_bounds_.min.z, mesh_min.z);
+
+            bind_pose_bounds_.max.x = std::max(bind_pose_bounds_.max.x, mesh_max.x);
+            bind_pose_bounds_.max.y = std::max(bind_pose_bounds_.max.y, mesh_max.y);
+            bind_pose_bounds_.max.z = std::max(bind_pose_bounds_.max.z, mesh_max.z);
+        }
+
+        for (const auto &mesh_id : node.GetAnimMeshes()) {
+            const auto *mesh = model_->GetAnimMesh(mesh_id);
+            if (!mesh) {
+                continue;
+            }
+
+            const auto &mesh_min = node_transform * glm::fvec4{mesh->GetBounds().min, 1.0f};
+            const auto &mesh_max = node_transform * glm::fvec4{mesh->GetBounds().min, 1.0f};
+
+            num_mesh_bounds++;
+            bind_pose_bounds_.min.x = std::min(bind_pose_bounds_.min.x, mesh_min.x);
+            bind_pose_bounds_.min.y = std::min(bind_pose_bounds_.min.y, mesh_min.y);
+            bind_pose_bounds_.min.z = std::min(bind_pose_bounds_.min.z, mesh_min.z);
+
+            bind_pose_bounds_.max.x = std::max(bind_pose_bounds_.max.x, mesh_max.x);
+            bind_pose_bounds_.max.y = std::max(bind_pose_bounds_.max.y, mesh_max.y);
+            bind_pose_bounds_.max.z = std::max(bind_pose_bounds_.max.z, mesh_max.z);
+        }
+    });
+
+    if (num_mesh_bounds == 0) {
+        bind_pose_bounds_.min = {-1.0f, -1.0f, -1.0f};
+        bind_pose_bounds_.max = {1.0f, 1.0f, 1.0f};
+    }
 }
 
 auto ModelViewer::ModelProxyModel::HasAnimations() const -> bool { return !animations_.empty(); }
@@ -119,6 +178,80 @@ ModelViewer::ModelProxyDrawlist::ModelProxyDrawlist(std::unique_ptr<render::Draw
         }
 
         animation_names_.push_back(std::string{animation->GetName()});
+    }
+
+    constexpr auto kFloatMax = std::numeric_limits<float>::max();
+    constexpr auto kFloatMin = std::numeric_limits<float>::min();
+
+    bind_pose_bounds_.min = {kFloatMax, kFloatMax, kFloatMax};
+    bind_pose_bounds_.max = {kFloatMin, kFloatMin, kFloatMin};
+
+    uint32_t num_mesh_bounds = 0;
+
+    // drawlists have no bind pose, so we make something up
+    // instead lets fins first motion frame with some draws and we will just use that one as the reference
+    for (const auto &motion_id : animations_) {
+        const auto *motion = drawlist_->GetMotion(motion_id);
+        if (!motion || motion->GetFrames().empty()) {
+            continue;
+        }
+
+        const auto &frame = motion->GetFrames().front();
+        if (frame.GetCommands().empty()) {
+            continue;
+        }
+
+        for (const auto &command : frame.GetCommands()) {
+            std::visit(
+                overload{
+                    [&](const render::Drawlist::Motion::DrawCommand &command) {
+                const auto *mesh = drawlist_->GetVertexBuffer(command.mesh);
+                if (!mesh) {
+                    return;
+                }
+
+                const auto &mesh_min = command.parameters.world_matix * glm::fvec4{mesh->GetBounds().min, 1.0f};
+                const auto &mesh_max = command.parameters.world_matix * glm::fvec4{mesh->GetBounds().min, 1.0f};
+
+                num_mesh_bounds++;
+                bind_pose_bounds_.min.x = std::min(bind_pose_bounds_.min.x, mesh_min.x);
+                bind_pose_bounds_.min.y = std::min(bind_pose_bounds_.min.y, mesh_min.y);
+                bind_pose_bounds_.min.z = std::min(bind_pose_bounds_.min.z, mesh_min.z);
+
+                bind_pose_bounds_.max.x = std::max(bind_pose_bounds_.max.x, mesh_max.x);
+                bind_pose_bounds_.max.y = std::max(bind_pose_bounds_.max.y, mesh_max.y);
+                bind_pose_bounds_.max.z = std::max(bind_pose_bounds_.max.z, mesh_max.z);
+            },
+
+                    [&](const render::Drawlist::Motion::SkinnedDrawCommand &command) {
+                const auto *mesh = drawlist_->GetSkinnedVertexBuffer(command.mesh);
+                if (!mesh) {
+                    return;
+                }
+
+                const auto &mesh_min = command.parameters.world_matix * glm::fvec4{mesh->GetBounds().min, 1.0f};
+                const auto &mesh_max = command.parameters.world_matix * glm::fvec4{mesh->GetBounds().min, 1.0f};
+
+                num_mesh_bounds++;
+                bind_pose_bounds_.min.x = std::min(bind_pose_bounds_.min.x, mesh_min.x);
+                bind_pose_bounds_.min.y = std::min(bind_pose_bounds_.min.y, mesh_min.y);
+                bind_pose_bounds_.min.z = std::min(bind_pose_bounds_.min.z, mesh_min.z);
+
+                bind_pose_bounds_.max.x = std::max(bind_pose_bounds_.max.x, mesh_max.x);
+                bind_pose_bounds_.max.y = std::max(bind_pose_bounds_.max.y, mesh_max.y);
+                bind_pose_bounds_.max.z = std::max(bind_pose_bounds_.max.z, mesh_max.z);
+            }},
+                command);
+        }
+
+        if (num_mesh_bounds > 0) {
+            break;
+        }
+    }
+
+    if (num_mesh_bounds == 0) {
+        bind_pose_bounds_.min = {-1.0f, -1.0f, -1.0f};
+        bind_pose_bounds_.max = {1.0f, 1.0f, 1.0f};
     }
 }
 
@@ -225,9 +358,75 @@ auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) ->
     SetCameraParameters();
 }
 
+auto ModelViewer::AzimuthCameraController::OnKeyDown(wxKeyEvent &event) -> void {
+    constexpr auto PI = glm::pi<float>();
+    wxChar code = event.GetUnicodeKey();
+
+    const auto is_shift_down = (event.GetModifiers() & wxMOD_SHIFT) == wxMOD_SHIFT;
+
+    switch (code) {
+    case 'W':
+        ShiftCenterRelative(glm::fvec2{0.0f, +0.1f});
+        break;
+    case 'A':
+        ShiftCenterRelative(glm::fvec2{-0.1f, 0.0f});
+        break;
+    case 'S':
+        ShiftCenterRelative(glm::fvec2{0.0f, -0.1f});
+        break;
+    case 'D':
+        ShiftCenterRelative(glm::fvec2{+0.1f, 0.0f});
+        break;
+    case 'X':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(PI * 0.5f);
+            camera_.SetElevation(0.0f);
+        } else {
+            camera_.SetAzimuth(-PI * 0.5f);
+            camera_.SetElevation(0.0f);
+        }
+        break;
+    case 'Y':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(PI * 0.5f);
+        } else {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(-PI * 0.5f);
+        }
+        break;
+    case 'Z':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(0.0f);
+        } else {
+            camera_.SetAzimuth(PI);
+            camera_.SetElevation(0.0f);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+auto ModelViewer::AzimuthCameraController::OnKeyUp([[maybe_unused]] wxKeyEvent &event) -> void {}
+
 auto ModelViewer::AzimuthCameraController::SetCameraParameters() -> void {
-    zoom_ = glm::clamp(zoom_, 0.2f, 10.0f);
+    zoom_ = glm::clamp(zoom_, 0.2f, 15.0f);
     camera_.SetDistance(zoom_);
+}
+
+auto ModelViewer::AzimuthCameraController::ShiftCenterRelative(const glm::fvec2 &offset) -> void {
+    const auto &inv_view = camera_.GetViewInv();
+    const auto view_space_offs = glm::fvec4{offset.x, offset.y, 0.0f, 0.0f};
+    const auto world_space_offs = inv_view * view_space_offs;
+
+    auto center = camera_.GetCenter();
+    center.x += world_space_offs.x;
+    center.y += world_space_offs.y;
+    center.z += world_space_offs.z;
+
+    camera_.SetCenter(center);
 }
 
 ModelViewer::OrthoCameraController::OrthoCameraController() : center_{0.0f, 0.0f} {
@@ -253,7 +452,7 @@ auto ModelViewer::OrthoCameraController::ResetView() -> void {
 
 auto ModelViewer::OrthoCameraController::OnUpdateSize(float width, float height) -> void {
     size_ = {width, height};
-    camera_.SetSize(size_ * zoom_);
+    SetCameraParameters();
 }
 
 auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {
@@ -268,8 +467,8 @@ auto ModelViewer::OrthoCameraController::OnMouseMotion([[maybe_unused]] wxMouseE
 
         const auto delta_position = current_mouse_position - prev_mouse_pos_.value();
         prev_mouse_pos_ = current_mouse_position;
-        center_ =
-            center_ + glm::fvec2{-static_cast<float>(delta_position.x), static_cast<float>(delta_position.y)} * zoom_;
+        center_ = center_ + glm::fvec2{-static_cast<float>(delta_position.x), static_cast<float>(delta_position.y)} *
+                                zoom_ / size_.y * 4.0f;
 
         SetCameraParameters();
     } else {
@@ -284,24 +483,49 @@ auto ModelViewer::OrthoCameraController::OnMouseScroll([[maybe_unused]] wxMouseE
     SetCameraParameters();
 }
 
+auto ModelViewer::OrthoCameraController::OnKeyDown(wxKeyEvent &event) -> void {
+    wxChar code = event.GetUnicodeKey();
+    switch (code) {
+    case 'W':
+        center_.y += 0.1f;
+        break;
+    case 'A':
+        center_.x -= 0.1f;
+        break;
+    case 'S':
+        center_.y -= 0.1f;
+        break;
+    case 'D':
+        center_.x += 0.1f;
+        break;
+    default:
+        break;
+    }
+}
+
+auto ModelViewer::OrthoCameraController::OnKeyUp([[maybe_unused]] wxKeyEvent &event) -> void {}
+
 auto ModelViewer::OrthoCameraController::SetCameraParameters() -> void {
-    zoom_ = glm::clamp(zoom_, 0.2f, 10.0f);
-    camera_.SetSize(size_ * zoom_);
+    zoom_ = glm::clamp(zoom_, 0.2f, 15.0f);
+    camera_.SetSize(4.0f * glm::fvec2{size_.x / size_.y, 1.0f} * zoom_);
     camera_.SetCenter(glm::fvec3{center_, 0.0f});
 }
 
 ModelViewer::ModelViewer(
     wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
     std::unique_ptr<ICameraController> camera_controller)
-    : GLView{parent, attributes}, model_loader_{std::move(loader)}, camera_controller_{std::move(camera_controller)},
+    : GLView{parent, attributes}, model_loader_{std::move(loader)},
       font_context_{memoryresource::GetFontOpensansTtf()} {
 
+    SetCameraController(std::move(camera_controller));
     animation_timer_ = std::make_unique<AnimationTimer>(this);
 
     Bind(wxEVT_SIZE, &ModelViewer::OnSize, this);
     Bind(wxEVT_IDLE, &ModelViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &ModelViewer::OnMouseScroll, this);
     Bind(wxEVT_MOTION, &ModelViewer::OnMouseMotion, this);
+    Bind(wxEVT_KEY_DOWN, &ModelViewer::OnKeyDown, this);
+    Bind(wxEVT_KEY_UP, &ModelViewer::OnKeyUp, this);
 }
 
 auto ModelViewer::GetAnimationList() const -> std::span<const std::string> {
@@ -368,6 +592,16 @@ auto ModelViewer::SetCurrentAnimationPaused(bool paused) -> void {
     }
 }
 
+auto ModelViewer::SetCameraController(std::unique_ptr<ICameraController> controller) -> void {
+    if (controller) {
+        camera_controller_ = std::move(controller);
+
+        if (device_) {
+            ApplyGridSettings();
+        }
+    }
+}
+
 auto ModelViewer::SeekCurrentAnimation(float time) -> void {
     if (model_proxy_) {
         model_proxy_->Seek(time);
@@ -398,6 +632,10 @@ auto ModelViewer::OnInitializeGL() -> void {
         return;
     }
 
+    if (camera_controller_) {
+        ApplyGridSettings();
+    }
+
     if (!model_loader_) {
         wxLogError("invalid model loader specified");
         state_ = State::eInvalidModel;
@@ -414,6 +652,8 @@ auto ModelViewer::OnInitializeGL() -> void {
 
     animation_timer_->Begin();
     last_frame_ = std::chrono::steady_clock::now();
+
+    CalculateModelScale();
 
     wxCommandEvent event{MODEL_VIEWER_LOADED_MODEL, GetId()};
     ProcessEvent(event);
@@ -465,7 +705,8 @@ auto ModelViewer::OnRender() -> void {
 
     camera_controller_->OnUpdateSize(f_sw, f_sh);
 
-    glm::fmat4x4 transform = glm::fmat4x4{1.0f};
+    const glm::fmat4x4 transform = glm::translate(
+        glm::scale(glm::fmat4x4{1.0f}, glm::fvec3{model_scale_, model_scale_, model_scale_}), model_center_);
 
     model_proxy_->Render(transform);
     device_->RenderFrame(camera_controller_->GetCamera());
@@ -516,6 +757,35 @@ auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
     camera_controller_->OnMouseMotion(event);
 }
 
+auto ModelViewer::OnKeyDown(wxKeyEvent &event) -> void { camera_controller_->OnKeyDown(event); }
+auto ModelViewer::OnKeyUp(wxKeyEvent &event) -> void { camera_controller_->OnKeyUp(event); }
+
+auto ModelViewer::CalculateModelScale() -> void {
+    if (!model_proxy_) {
+        return;
+    }
+
+    const auto bounds = model_proxy_->GetBindPoseBounds();
+
+    // optimally, the model should have max extent of +1.0f
+    // but the scale should be uniform
+
+    const auto max_radius = std::max({
+        glm::abs(bounds.min.x),
+        glm::abs(bounds.min.y),
+        glm::abs(bounds.min.z),
+        glm::abs(bounds.max.x),
+        glm::abs(bounds.max.y),
+        glm::abs(bounds.max.z),
+    });
+
+    model_scale_ = 1.0f / max_radius;
+
+    if (device_) {
+        ApplyGridSettings();
+    }
+}
+
 auto ModelViewer::RefreshText() -> void {
     static std::vector<std::string> kEmptyAnimList;
 
@@ -542,4 +812,17 @@ auto ModelViewer::RefreshText() -> void {
     } catch (const std::exception &e) {
         wxLogError(wxString::Format("cannot update text: %s", e.what()));
     }
+}
+
+auto ModelViewer::ApplyGridSettings() -> void {
+    device_->SetEnableGrid(camera_controller_->GetAllowGrid());
+
+    auto grid_scale = 1.0f / model_scale_;
+
+    // prevent grid from being too tiny
+    if (grid_scale > 10.0f) {
+        grid_scale = 0.1f * grid_scale;
+    }
+
+    device_->SetGridScale(grid_scale);
 }

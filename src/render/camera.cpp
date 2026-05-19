@@ -178,7 +178,7 @@ inline auto OrthoCamera::CalculateProjection() const -> void {
     if (dirty_bit_proj_) {
         const auto half_size = size_ * 0.5f;
         projection_ = glm::ortho(-half_size.x, half_size.x, -half_size.y, half_size.y, near_, far_);
-        projection_inv_ = glm::inverse(view_);
+        projection_inv_ = glm::inverse(projection_);
 
         dirty_bit_proj_ = false;
     }

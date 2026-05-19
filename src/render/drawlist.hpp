@@ -79,12 +79,15 @@ public:
 
         auto GetModel() const -> const Drawlist & { return *model_; }
         auto GetHandle() const -> const hal::MeshHandle & { return handle_; }
+        auto GetBounds() const -> const render::Bounds & { return bounds_; }
 
     private:
-        VertexBuffer(Drawlist *model, hal::MeshHandle handle) : model_{model}, handle_{std::move(handle)} {}
+        VertexBuffer(Drawlist *model, hal::MeshHandle handle, const render::Bounds &bounds)
+            : model_{model}, handle_{std::move(handle)}, bounds_{bounds} {}
 
         Drawlist *model_ = nullptr;
         hal::MeshHandle handle_;
+        render::Bounds bounds_;
 
         friend Drawlist;
     };
@@ -141,12 +144,15 @@ public:
 
         auto GetModel() const -> const Drawlist & { return *model_; }
         auto GetHandle() const -> const hal::AnimMeshHandle & { return handle_; }
+        auto GetBounds() const -> const render::Bounds & { return bounds_; }
 
     private:
-        SkinnedVertexBuffer(Drawlist *model, hal::AnimMeshHandle handle) : model_{model}, handle_{std::move(handle)} {}
+        SkinnedVertexBuffer(Drawlist *model, hal::AnimMeshHandle handle, const render::Bounds &bounds)
+            : model_{model}, handle_{std::move(handle)}, bounds_{bounds} {}
 
         Drawlist *model_ = nullptr;
         hal::AnimMeshHandle handle_;
+        render::Bounds bounds_;
 
         friend Drawlist;
     };
