@@ -358,9 +358,75 @@ auto ModelViewer::AzimuthCameraController::OnMouseScroll(wxMouseEvent &event) ->
     SetCameraParameters();
 }
 
+auto ModelViewer::AzimuthCameraController::OnKeyDown(wxKeyEvent &event) -> void {
+    constexpr auto PI = glm::pi<float>();
+    wxChar code = event.GetUnicodeKey();
+
+    const auto is_shift_down = (event.GetModifiers() & wxMOD_SHIFT) == wxMOD_SHIFT;
+
+    switch (code) {
+    case 'W':
+        ShiftCenterRelative(glm::fvec2{0.0f, +0.1f});
+        break;
+    case 'A':
+        ShiftCenterRelative(glm::fvec2{-0.1f, 0.0f});
+        break;
+    case 'S':
+        ShiftCenterRelative(glm::fvec2{0.0f, -0.1f});
+        break;
+    case 'D':
+        ShiftCenterRelative(glm::fvec2{+0.1f, 0.0f});
+        break;
+    case 'X':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(PI * 0.5f);
+            camera_.SetElevation(0.0f);
+        } else {
+            camera_.SetAzimuth(-PI * 0.5f);
+            camera_.SetElevation(0.0f);
+        }
+        break;
+    case 'Y':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(PI * 0.5f);
+        } else {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(-PI * 0.5f);
+        }
+        break;
+    case 'Z':
+        if (!is_shift_down) {
+            camera_.SetAzimuth(0.0f);
+            camera_.SetElevation(0.0f);
+        } else {
+            camera_.SetAzimuth(PI);
+            camera_.SetElevation(0.0f);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+auto ModelViewer::AzimuthCameraController::OnKeyUp([[maybe_unused]] wxKeyEvent &event) -> void {}
+
 auto ModelViewer::AzimuthCameraController::SetCameraParameters() -> void {
     zoom_ = glm::clamp(zoom_, 0.2f, 15.0f);
     camera_.SetDistance(zoom_);
+}
+
+auto ModelViewer::AzimuthCameraController::ShiftCenterRelative(const glm::fvec2 &offset) -> void {
+    const auto &inv_view = camera_.GetViewInv();
+    const auto view_space_offs = glm::fvec4{offset.x, offset.y, 0.0f, 0.0f};
+    const auto world_space_offs = inv_view * view_space_offs;
+
+    auto center = camera_.GetCenter();
+    center.x += world_space_offs.x;
+    center.y += world_space_offs.y;
+    center.z += world_space_offs.z;
+
+    camera_.SetCenter(center);
 }
 
 ModelViewer::OrthoCameraController::OrthoCameraController() : center_{0.0f, 0.0f} {
@@ -417,6 +483,28 @@ auto ModelViewer::OrthoCameraController::OnMouseScroll([[maybe_unused]] wxMouseE
     SetCameraParameters();
 }
 
+auto ModelViewer::OrthoCameraController::OnKeyDown(wxKeyEvent &event) -> void {
+    wxChar code = event.GetUnicodeKey();
+    switch (code) {
+    case 'W':
+        center_.y += 0.1f;
+        break;
+    case 'A':
+        center_.x -= 0.1f;
+        break;
+    case 'S':
+        center_.y -= 0.1f;
+        break;
+    case 'D':
+        center_.x += 0.1f;
+        break;
+    default:
+        break;
+    }
+}
+
+auto ModelViewer::OrthoCameraController::OnKeyUp([[maybe_unused]] wxKeyEvent &event) -> void {}
+
 auto ModelViewer::OrthoCameraController::SetCameraParameters() -> void {
     zoom_ = glm::clamp(zoom_, 0.2f, 15.0f);
     camera_.SetSize(4.0f * glm::fvec2{size_.x / size_.y, 1.0f} * zoom_);
@@ -435,6 +523,8 @@ ModelViewer::ModelViewer(
     Bind(wxEVT_IDLE, &ModelViewer::OnIdle, this);
     Bind(wxEVT_MOUSEWHEEL, &ModelViewer::OnMouseScroll, this);
     Bind(wxEVT_MOTION, &ModelViewer::OnMouseMotion, this);
+    Bind(wxEVT_KEY_DOWN, &ModelViewer::OnKeyDown, this);
+    Bind(wxEVT_KEY_UP, &ModelViewer::OnKeyUp, this);
 }
 
 auto ModelViewer::GetAnimationList() const -> std::span<const std::string> {
@@ -657,6 +747,9 @@ auto ModelViewer::OnMouseMotion(wxMouseEvent &event) -> void {
     event.Skip();
     camera_controller_->OnMouseMotion(event);
 }
+
+auto ModelViewer::OnKeyDown(wxKeyEvent &event) -> void { camera_controller_->OnKeyDown(event); }
+auto ModelViewer::OnKeyUp(wxKeyEvent &event) -> void { camera_controller_->OnKeyUp(event); }
 
 auto ModelViewer::CalculateModelScale() -> void {
     if (!model_proxy_) {

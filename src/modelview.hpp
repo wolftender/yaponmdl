@@ -154,6 +154,8 @@ public:
         virtual auto OnUpdateSize([[maybe_unused]] float width, [[maybe_unused]] float height) -> void {}
         virtual auto OnMouseMotion([[maybe_unused]] wxMouseEvent &event) -> void {}
         virtual auto OnMouseScroll([[maybe_unused]] wxMouseEvent &event) -> void {}
+        virtual auto OnKeyDown([[maybe_unused]] wxKeyEvent &event) -> void {}
+        virtual auto OnKeyUp([[maybe_unused]] wxKeyEvent &event) -> void {}
     };
 
     class AzimuthCameraController : public ICameraController {
@@ -169,9 +171,12 @@ public:
         auto OnUpdateSize(float width, float height) -> void override;
         auto OnMouseMotion(wxMouseEvent &event) -> void override;
         auto OnMouseScroll(wxMouseEvent &event) -> void override;
+        auto OnKeyDown(wxKeyEvent &event) -> void override;
+        auto OnKeyUp(wxKeyEvent &event) -> void override;
 
     private:
         auto SetCameraParameters() -> void;
+        auto ShiftCenterRelative(const glm::fvec2 &offset) -> void;
 
         float zoom_ = 1.0f;
         std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
@@ -191,6 +196,8 @@ public:
         auto OnUpdateSize(float width, float height) -> void override;
         auto OnMouseMotion(wxMouseEvent &event) -> void override;
         auto OnMouseScroll(wxMouseEvent &event) -> void override;
+        auto OnKeyDown(wxKeyEvent &event) -> void override;
+        auto OnKeyUp(wxKeyEvent &event) -> void override;
 
     private:
         auto SetCameraParameters() -> void;
@@ -250,6 +257,8 @@ protected:
     auto OnMouseScroll(wxMouseEvent &event) -> void;
 
     auto OnMouseMotion(wxMouseEvent &event) -> void;
+    auto OnKeyDown(wxKeyEvent &event) -> void;
+    auto OnKeyUp(wxKeyEvent &event) -> void;
 
 private:
     class AnimationTimer : public wxTimer {
