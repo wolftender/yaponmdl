@@ -28,8 +28,8 @@ public:
     auto GetProjection() const -> const glm::fmat4x4 & override;
     auto GetView() const -> const glm::fmat4x4 & override;
 
-    auto GetProjectionInv() const -> const glm::fmat4x4 &;
-    auto GetViewInv() const -> const glm::fmat4x4 &;
+    auto GetProjectionInv() const -> const glm::fmat4x4 & override;
+    auto GetViewInv() const -> const glm::fmat4x4 & override;
 
 private:
     inline auto CalculateProjection() const -> void;
@@ -53,7 +53,7 @@ public:
     auto SetTarget(const glm::fvec3 &target) -> void;
 
     auto GetView() const -> const glm::fmat4x4 & override;
-    auto GetViewInv() const -> const glm::fmat4x4 &;
+    auto GetViewInv() const -> const glm::fmat4x4 & override;
 
 private:
     inline auto CalculateView() const -> void;
@@ -82,7 +82,7 @@ public:
     auto SetElevation(float elevation) -> void;
 
     auto GetView() const -> const glm::fmat4x4 & override;
-    auto GetViewInv() const -> const glm::fmat4x4 &;
+    auto GetViewInv() const -> const glm::fmat4x4 & override;
 
 private:
     inline auto CalculateView() const -> void;
@@ -113,8 +113,8 @@ public:
     auto GetProjection() const -> const glm::fmat4x4 & override;
     auto GetView() const -> const glm::fmat4x4 & override;
 
-    auto GetProjectionInv() const -> const glm::fmat4x4 &;
-    auto GetViewInv() const -> const glm::fmat4x4 &;
+    auto GetProjectionInv() const -> const glm::fmat4x4 & override;
+    auto GetViewInv() const -> const glm::fmat4x4 & override;
 
 private:
     inline auto CalculateView() const -> void;

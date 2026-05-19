@@ -103,6 +103,8 @@ add_asset(${PROGRAM_SRC_DIR}/shaders/vert_postfilter.glsl vert_postfilter.glsl.h
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_postfilter.glsl frag_postfilter.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/vert_text.glsl vert_text.glsl.h)
 add_asset(${PROGRAM_SRC_DIR}/shaders/frag_text.glsl frag_text.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/vert_grid.glsl vert_grid.glsl.h)
+add_asset(${PROGRAM_SRC_DIR}/shaders/frag_grid.glsl frag_grid.glsl.h)
 add_asset(${CMAKE_CURRENT_LIST_DIR}/assets/opensans.ttf opensans.ttf.h)
 
 set(SOURCES_LIST

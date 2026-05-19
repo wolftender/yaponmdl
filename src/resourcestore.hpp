@@ -14,6 +14,8 @@ auto GetVertShaderPost() -> std::string_view;
 auto GetFragShaderPost() -> std::string_view;
 auto GetVertShaderText() -> std::string_view;
 auto GetFragShaderText() -> std::string_view;
+auto GetVertShaderGrid() -> std::string_view;
+auto GetFragShaderGrid() -> std::string_view;
 
 auto GetFontOpensansTtf() -> std::span<const uint8_t>;
 

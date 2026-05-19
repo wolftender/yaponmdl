@@ -16,6 +16,9 @@ class ICamera {
 public:
     virtual auto GetProjection() const -> const glm::fmat4x4 & = 0;
     virtual auto GetView() const -> const glm::fmat4x4 & = 0;
+
+    virtual auto GetProjectionInv() const -> const glm::fmat4x4 & = 0;
+    virtual auto GetViewInv() const -> const glm::fmat4x4 & = 0;
 };
 
 class RenderDeviceOpenGL40 : public IDevice {
@@ -64,6 +67,7 @@ private:
 
         gl::ShaderProgram static_shader_;
         gl::ShaderProgram skinned_shader_;
+        gl::ShaderProgram grid_shader_;
         gl::ShaderProgram post_shader_;
         gl::Mesh<PositionVertex> screen_quad_;
 
