@@ -8,6 +8,11 @@
 
 namespace render {
 
+struct Bounds {
+    glm::fvec3 min = {0.0f, 0.0f, 0.0f};
+    glm::fvec3 max = {0.0f, 0.0f, 0.0f};
+};
+
 struct TexturedVertex {
     glm::fvec3 position;
     glm::fvec2 uv;
@@ -54,6 +59,30 @@ struct ModelVertex {
         return kLayout;
     }
 };
+
+template <typename V>
+auto CalculateIndexedBounds(std::span<const V> vertices, std::span<const uint32_t> indices) -> Bounds {
+    constexpr auto kFloatMax = std::numeric_limits<float>::max();
+    constexpr auto kFloatMin = std::numeric_limits<float>::min();
+
+    render::Bounds bounds;
+    bounds.min = {kFloatMax, kFloatMax, kFloatMax};
+    bounds.max = {kFloatMin, kFloatMin, kFloatMin};
+
+    for (const auto index : indices) {
+        const auto &vertex = vertices[index];
+
+        bounds.max.x = std::max(bounds.max.x, vertex.position.x);
+        bounds.max.y = std::max(bounds.max.y, vertex.position.y);
+        bounds.max.z = std::max(bounds.max.z, vertex.position.z);
+
+        bounds.min.x = std::min(bounds.min.x, vertex.position.x);
+        bounds.min.y = std::min(bounds.min.y, vertex.position.y);
+        bounds.min.z = std::min(bounds.min.z, vertex.position.z);
+    }
+
+    return bounds;
+}
 
 constexpr uint32_t kMaxMatricesPerSkin = 200;
 

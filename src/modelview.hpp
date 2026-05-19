@@ -49,6 +49,8 @@ public:
         virtual auto Seek(float time) -> void = 0;
         virtual auto SetAnimationIndex(uint32_t index) -> void = 0;
 
+        virtual auto GetBindPoseBounds() const -> const render::Bounds & = 0;
+
         virtual auto Integrate(float delta_time) -> void = 0;
         virtual auto Render(const glm::fmat4x4 &world_matrix) -> void = 0;
     };
@@ -82,6 +84,8 @@ public:
         auto Seek(float time) -> void override;
         auto SetAnimationIndex(uint32_t index) -> void override;
 
+        auto GetBindPoseBounds() const -> const render::Bounds & override { return bind_pose_bounds_; }
+
         auto Integrate(float delta_time) -> void override;
         auto Render(const glm::fmat4x4 &world_matrix) -> void override;
 
@@ -94,6 +98,8 @@ public:
 
         std::vector<std::string> animation_names_;
         std::vector<render::Model::AnimationId> animations_;
+
+        render::Bounds bind_pose_bounds_;
     };
 
     class ModelProxyDrawlist : public IModelProxy {
@@ -119,6 +125,8 @@ public:
         auto Seek(float time) -> void override;
         auto SetAnimationIndex(uint32_t index) -> void override;
 
+        auto GetBindPoseBounds() const -> const render::Bounds & override { return bind_pose_bounds_; }
+
         auto Integrate(float delta_time) -> void override;
         auto Render(const glm::fmat4x4 &world_matrix) -> void override;
 
@@ -130,6 +138,8 @@ public:
 
         std::vector<std::string> animation_names_;
         std::vector<render::Drawlist::MotionId> animations_;
+
+        render::Bounds bind_pose_bounds_;
     };
 
     class ICameraController {
@@ -204,6 +214,12 @@ public:
         wxWindow *parent, const wxGLAttributes &attributes, std::unique_ptr<ILoader> loader,
         std::unique_ptr<ICameraController> camera_controller = MakeAzimuthCamera());
 
+    auto GetModelScale() const -> float { return model_scale_; }
+    auto GetModelCenter() const -> const glm::fvec3 & { return model_center_; }
+
+    auto SetModelScale(float scale) -> void { model_scale_ = scale; }
+    auto SetModelCenter(const glm::fvec3 &center) -> void { model_center_ = center; }
+
     auto GetFps() const -> uint32_t { return fps_; }
     auto GetModel() const -> const IModelProxy * { return model_proxy_.get(); }
     auto GetAnimationList() const -> std::span<const std::string>;
@@ -220,6 +236,8 @@ public:
 
     auto IsCurrentAnimationPaused() const -> bool;
     auto SetCurrentAnimationPaused(bool paused) -> void;
+
+    auto SetCameraController(std::unique_ptr<ICameraController> controller) -> void;
 
     auto SeekCurrentAnimation(float time) -> void;
 
@@ -253,6 +271,7 @@ private:
         eReady,
     };
 
+    auto CalculateModelScale() -> void;
     auto RefreshText() -> void;
 
     std::unique_ptr<ILoader> model_loader_ = nullptr;
@@ -274,6 +293,9 @@ private:
 
     std::unique_ptr<render::hal::RenderDeviceOpenGL40> device_;
     std::unique_ptr<IModelProxy> model_proxy_;
+
+    float model_scale_ = 1.0f;
+    glm::fvec3 model_center_ = glm::fvec3{0.0f, 0.0f, 0.0f};
 
     State state_ = ModelViewer::State::eIdle;
 };

@@ -316,7 +316,7 @@ auto Drawlist::AddVertexBuffer(std::span<const StaticVertex> vertices, std::span
     -> std::optional<VertexBufferId> {
     auto mesh = device_->CreateMesh(vertices, indices);
 
-    vertex_buffers_.emplace_back(VertexBuffer{this, std::move(mesh)});
+    vertex_buffers_.emplace_back(VertexBuffer{this, std::move(mesh), CalculateIndexedBounds(vertices, indices)});
     return VertexBufferId{static_cast<uint32_t>(vertex_buffers_.size() - 1)};
 }
 
@@ -324,7 +324,8 @@ auto Drawlist::AddSkinnedVertexBuffer(std::span<const AnimatedVertex> vertices, 
     -> std::optional<SkinnedVertexBufferId> {
     auto mesh = device_->CreateAnimatedMesh(vertices, indices);
 
-    skinned_vertex_buffers_.emplace_back(SkinnedVertexBuffer{this, std::move(mesh)});
+    skinned_vertex_buffers_.emplace_back(
+        SkinnedVertexBuffer{this, std::move(mesh), CalculateIndexedBounds(vertices, indices)});
     return SkinnedVertexBufferId{static_cast<uint32_t>(skinned_vertex_buffers_.size() - 1)};
 }
 

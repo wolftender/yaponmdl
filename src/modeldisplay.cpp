@@ -21,10 +21,6 @@ ModelDisplay::ModelDisplay(
     SetSizerAndFit(sizer_);
 }
 
-auto ModelDisplay::ZoomIn() -> void { viewer_->ZoomIn(); }
-auto ModelDisplay::ZoomOut() -> void { viewer_->ZoomOut(); }
-auto ModelDisplay::ResetView() -> void { viewer_->ResetView(); }
-
 auto ModelDisplay::OnSelectAnimation(wxDataViewEvent &event) -> void {
     const auto item = event.GetItem();
 

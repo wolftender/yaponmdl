@@ -25,6 +25,10 @@ enum MenuCommand {
     eMenuCommandViewZoomOut,
     eMenuCommandViewResetView,
     eMenuCommandViewInterpolateGxx,
+    eMenuCommandViewCamera,
+    eMenuCommandViewCameraDefault,
+    eMenuCommandViewCameraAzimuth,
+    eMenuCommandViewCameraOrtho,
     eMenuCommandHelpLicense = 9000,
 };
 
@@ -115,6 +119,17 @@ ModelBrowserFrame::ModelBrowserFrame()
     menu_view->Append(eMenuCommandViewZoomOut, "Zoom out", "Decrease zoom");
     menu_view->Append(eMenuCommandViewResetView, "Reset view", "Restores view to the defaults");
     menu_view->AppendSeparator();
+
+    wxMenu *camera_mode_menu = new wxMenu;
+    camera_mode_menu->Append(
+        eMenuCommandViewCameraDefault, "Default", "Default camera mode for given model type", wxITEM_RADIO);
+    camera_mode_menu->Append(
+        eMenuCommandViewCameraAzimuth, "Azimuth", "Azimuth camera with perspective projection (\"3D\" camera)",
+        wxITEM_RADIO);
+    camera_mode_menu->Append(
+        eMenuCommandViewCameraOrtho, "Orthographic", "Orthographic projection camera (\"2D\" camera)", wxITEM_RADIO);
+
+    menu_view->AppendSubMenu(camera_mode_menu, "Camera");
     menu_view->Append(
         eMenuCommandViewInterpolateGxx, "Interpolate GXX",
         "Enables automatic GXX interpolation (buggy for some models)", wxITEM_CHECK);
@@ -169,6 +184,9 @@ ModelBrowserFrame::ModelBrowserFrame()
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomIn, this, eMenuCommandViewZoomIn);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnZoomOut, this, eMenuCommandViewZoomOut);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnResetView, this, eMenuCommandViewResetView);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnCameraModeChanged, this, eMenuCommandViewCameraDefault);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnCameraModeChanged, this, eMenuCommandViewCameraAzimuth);
+    Bind(wxEVT_MENU, &ModelBrowserFrame::OnCameraModeChanged, this, eMenuCommandViewCameraOrtho);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnEnableGxxInterpolation, this, eMenuCommandViewInterpolateGxx);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnShowLicense, this, eMenuCommandHelpLicense);
     Bind(wxEVT_MENU, &ModelBrowserFrame::OnAbout, this, wxID_ABOUT);
@@ -654,23 +672,25 @@ auto ModelBrowserFrame::HandleNewFile() -> void {
         texture_viewer_ = new TextureViewer(notebook_right_, GLView::CreateAttributes(), current_file_);
         notebook_right_->AddPage(texture_viewer_, "Texture view", true);
     } else if (gmo::CheckHeader(current_file_)) {
+        default_camera_view_ = CameraMode::eOrthographic;
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GmoLoader>(current_file_, texture_repository_), ModelViewer::MakeOrthoCamera(),
-            notebook_right_);
+            std::make_unique<GmoLoader>(current_file_, texture_repository_), CreateCameraController(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GMO Model view", true);
     } else if (act::CheckHeader(current_file_)) {
-        model_viewer_ = new ModelDisplay(
-            std::make_unique<ActLoader>(current_file_), ModelViewer::MakeAzimuthCamera(), notebook_right_);
+        default_camera_view_ = CameraMode::eAzimuth;
+        model_viewer_ =
+            new ModelDisplay(std::make_unique<ActLoader>(current_file_), CreateCameraController(), notebook_right_);
         notebook_right_->AddPage(model_viewer_, "ACT Model view", true);
     } else if (gxx::CheckHeader(current_file_)) {
+        default_camera_view_ = CameraMode::eOrthographic;
         uint32_t gxx_load_flags = 0;
         if (preferences_.enable_gxx_interpolation) {
             gxx_load_flags |= GxxLoader::eGxxLoaderLoadAsModel;
         }
 
         model_viewer_ = new ModelDisplay(
-            std::make_unique<GxxLoader>(current_file_, texture_repository_, gxx_load_flags),
-            ModelViewer::MakeOrthoCamera(), notebook_right_);
+            std::make_unique<GxxLoader>(current_file_, texture_repository_, gxx_load_flags), CreateCameraController(),
+            notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GXX Model view", true);
     }
 
@@ -691,7 +711,7 @@ auto ModelBrowserFrame::OnPageChanged([[maybe_unused]] wxBookCtrlEvent &event) -
 
 auto ModelBrowserFrame::OnZoomOut([[maybe_unused]] wxCommandEvent &event) -> void {
     if (model_viewer_) {
-        model_viewer_->ZoomOut();
+        model_viewer_->GetViewer()->ZoomOut();
     } else if (texture_viewer_) {
         texture_viewer_->ZoomOut();
     }
@@ -699,7 +719,7 @@ auto ModelBrowserFrame::OnZoomOut([[maybe_unused]] wxCommandEvent &event) -> voi
 
 auto ModelBrowserFrame::OnZoomIn([[maybe_unused]] wxCommandEvent &event) -> void {
     if (model_viewer_) {
-        model_viewer_->ZoomIn();
+        model_viewer_->GetViewer()->ZoomIn();
     } else if (texture_viewer_) {
         texture_viewer_->ZoomIn();
     }
@@ -707,9 +727,32 @@ auto ModelBrowserFrame::OnZoomIn([[maybe_unused]] wxCommandEvent &event) -> void
 
 auto ModelBrowserFrame::OnResetView([[maybe_unused]] wxCommandEvent &event) -> void {
     if (model_viewer_) {
-        model_viewer_->ResetView();
+        model_viewer_->GetViewer()->ResetView();
     } else if (texture_viewer_) {
         texture_viewer_->ResetView();
+    }
+}
+
+auto ModelBrowserFrame::OnCameraModeChanged(wxCommandEvent &event) -> void {
+    const auto is_enable = event.IsChecked();
+    const auto mode_idx = event.GetId();
+
+    if (!is_enable) {
+        return;
+    }
+
+    switch (mode_idx) {
+    case eMenuCommandViewCameraDefault:
+        UpdateCameraMode(CameraMode::eDefault);
+        break;
+    case eMenuCommandViewCameraAzimuth:
+        UpdateCameraMode(CameraMode::eAzimuth);
+        break;
+    case eMenuCommandViewCameraOrtho:
+        UpdateCameraMode(CameraMode::eOrthographic);
+        break;
+    default:
+        break;
     }
 }
 
@@ -718,6 +761,30 @@ auto ModelBrowserFrame::OnEnableGxxInterpolation(wxCommandEvent &event) -> void 
 
     if (model_viewer_) {
         ReloadCurrentFile();
+    }
+}
+
+auto ModelBrowserFrame::UpdateCameraMode(CameraMode mode) -> void {
+    if (preferences_.camera_mode == mode) {
+        return;
+    }
+
+    preferences_.camera_mode = mode;
+
+    if (model_viewer_) {
+        model_viewer_->GetViewer()->SetCameraController(CreateCameraController());
+    }
+}
+
+auto ModelBrowserFrame::CreateCameraController() const -> std::unique_ptr<ModelViewer::ICameraController> {
+    const auto type =
+        preferences_.camera_mode == CameraMode::eDefault ? default_camera_view_ : preferences_.camera_mode;
+
+    switch (type) {
+    case CameraMode::eOrthographic:
+        return ModelViewer::MakeOrthoCamera();
+    default:
+        return ModelViewer::MakeAzimuthCamera();
     }
 }
 

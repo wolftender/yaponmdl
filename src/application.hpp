@@ -35,7 +35,14 @@ private:
 
 class ModelBrowserFrame : public wxFrame {
 private:
+    enum class CameraMode {
+        eDefault,
+        eAzimuth,
+        eOrthographic,
+    };
+
     struct Preferences {
+        CameraMode camera_mode = ModelBrowserFrame::CameraMode::eDefault;
         bool enable_gxx_interpolation = false;
     };
 
@@ -88,9 +95,12 @@ private:
     auto OnZoomOut(wxCommandEvent &event) -> void;
     auto OnZoomIn(wxCommandEvent &event) -> void;
     auto OnResetView(wxCommandEvent &event) -> void;
+    auto OnCameraModeChanged(wxCommandEvent &event) -> void;
     auto OnEnableGxxInterpolation(wxCommandEvent &event) -> void;
 
     auto EnableViewerOptions(bool enabled) -> void;
+    auto UpdateCameraMode(CameraMode mode) -> void;
+    auto CreateCameraController() const -> std::unique_ptr<ModelViewer::ICameraController>;
 
     Preferences preferences_;
 
@@ -100,6 +110,7 @@ private:
 
     std::vector<uint8_t> current_file_;
 
+    CameraMode default_camera_view_ = ModelBrowserFrame::CameraMode::eAzimuth;
     ModelDisplay *model_viewer_ = nullptr;
     TextureViewer *texture_viewer_ = nullptr;
 

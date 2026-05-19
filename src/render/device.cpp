@@ -118,7 +118,7 @@ auto RenderDeviceOpenGL40::BaseSceneRenderer::GeometryPass(const ICamera &camera
             context.SetUniform("u_uv_offset", draw->uv_offset);
             context.SetUniform("u_uv_scale", draw->uv_scale);
             context.SetUniform("u_alpha", draw->alpha.x);
-            context.SetUniform("u_world", glm::fmat4x4{1.0f});
+            context.SetUniform("u_world", draw->world_matrix);
             mesh->Draw();
 
             GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
