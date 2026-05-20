@@ -194,11 +194,36 @@ constexpr auto GetPixelBitWidth(SceTexturePixelFormat format) -> uint32_t {
     }
 }
 
+constexpr auto GetClutBitWidth(SceTextureClutFormat format) -> uint32_t {
+    switch (format) {
+    case eSceCLUTRGBA5650:
+    case eSceCLUTRGBA5551:
+    case eSceCLUTRGBA4444:
+        return 16;
+
+    case eSceCLUTRGBA8888:
+        return 32;
+
+    default:
+        throw GxtParseError{"invalid clut format"};
+    }
+}
+
+inline auto MakeCLUTIndex(
+    uint32_t index, uint32_t shift, uint32_t mask, /* unimplemented */ [[maybe_unused]] uint32_t csa,
+    uint32_t num_colors) -> uint32_t {
+    // the modulo division is not a part of what GE hardware does but its a nice way to prevent the program from
+    // crashing just in case! :D
+    return ((index >> shift) & mask) % num_colors;
+}
+
 auto ImageDecodeCLUT(
     const std::vector<RGBA8888Color> &palette, SceTexturePixelFormat format, std::span<const uint8_t> buffer,
-    uint32_t width, uint32_t height) -> std::vector<uint8_t> {
+    uint32_t width, uint32_t height, uint32_t shift, uint32_t mask, uint32_t csa) -> std::vector<uint8_t> {
     std::vector<uint8_t> rgba_plane;
     rgba_plane.resize(width * height * 4);
+
+    const auto num_clut_colors = static_cast<uint32_t>(palette.size());
 
     switch (format) {
     case eScePFIDX4: {
@@ -209,8 +234,8 @@ auto ImageDecodeCLUT(
                 const auto src_idx = stride * y + x;
                 const auto dst_idx = 4 * (width * y + (2 * x));
 
-                const auto pal_idx1 = buffer[src_idx] & 0xf;
-                const auto pal_idx2 = (buffer[src_idx] >> 4) & 0xf;
+                const auto pal_idx1 = MakeCLUTIndex(buffer[src_idx] & 0xf, shift, mask, csa, num_clut_colors);
+                const auto pal_idx2 = MakeCLUTIndex((buffer[src_idx] >> 4) & 0xf, shift, mask, csa, num_clut_colors);
 
                 rgba_plane[dst_idx + 0] = palette[pal_idx1].r;
                 rgba_plane[dst_idx + 1] = palette[pal_idx1].g;
@@ -226,7 +251,7 @@ auto ImageDecodeCLUT(
             if (width % 2 == 1) {
                 const auto src_idx = (stride * y) + (width / 2);
                 const auto dst_idx = 4 * (stride * y + width - 1);
-                const auto pal_idx = buffer[src_idx] & 0xf;
+                const auto pal_idx = MakeCLUTIndex(buffer[src_idx] & 0xf, shift, mask, csa, num_clut_colors);
 
                 rgba_plane[dst_idx + 0] = palette[pal_idx].r;
                 rgba_plane[dst_idx + 1] = palette[pal_idx].g;
@@ -237,31 +262,50 @@ auto ImageDecodeCLUT(
         break;
     }
     case eScePFIDX8:
-        for (uint32_t i = 0; i < buffer.size(); ++i) {
-            const auto palette_idx = buffer[i];
-            rgba_plane[4 * i + 0] = palette[palette_idx].r;
-            rgba_plane[4 * i + 1] = palette[palette_idx].g;
-            rgba_plane[4 * i + 2] = palette[palette_idx].b;
-            rgba_plane[4 * i + 3] = palette[palette_idx].a;
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const auto src_idx = width * y + x;
+                const auto dst_idx = 4 * (width * y + x);
+                const auto pal_idx = MakeCLUTIndex(buffer[src_idx], shift, mask, csa, num_clut_colors);
+
+                rgba_plane[dst_idx + 0] = palette[pal_idx].r;
+                rgba_plane[dst_idx + 1] = palette[pal_idx].g;
+                rgba_plane[dst_idx + 2] = palette[pal_idx].b;
+                rgba_plane[dst_idx + 3] = palette[pal_idx].a;
+            }
         }
         break;
     case eScePFIDX16:
-        for (uint32_t i = 0; i < buffer.size(); i = i + 2) {
-            const auto palette_idx = uint16_t{buffer[i]} | (uint16_t{buffer[i + 1]} << 8);
-            rgba_plane[4 * i + 0] = palette[palette_idx].r;
-            rgba_plane[4 * i + 1] = palette[palette_idx].g;
-            rgba_plane[4 * i + 2] = palette[palette_idx].b;
-            rgba_plane[4 * i + 3] = palette[palette_idx].a;
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width * 2; ++x) {
+                const auto src_idx = 2 * width * y + x;
+                const auto dst_idx = 4 * (width * y + x);
+                const auto pal_idx = MakeCLUTIndex(
+                    uint16_t{buffer[src_idx]} | (uint16_t{buffer[src_idx + 1]} << 8), shift, mask, csa,
+                    num_clut_colors);
+
+                rgba_plane[dst_idx + 0] = palette[pal_idx].r;
+                rgba_plane[dst_idx + 1] = palette[pal_idx].g;
+                rgba_plane[dst_idx + 2] = palette[pal_idx].b;
+                rgba_plane[dst_idx + 3] = palette[pal_idx].a;
+            }
         }
         break;
     case eScePFIDX32:
-        for (uint32_t i = 0; i < buffer.size(); i = i + 4) {
-            const auto palette_idx = uint32_t{buffer[i]} | (uint32_t{buffer[i + 1]} << 8) |
-                                     (uint32_t{buffer[i + 2]} << 16) | (uint32_t{buffer[i + 3]} << 24);
-            rgba_plane[4 * i + 0] = palette[palette_idx].r;
-            rgba_plane[4 * i + 1] = palette[palette_idx].g;
-            rgba_plane[4 * i + 2] = palette[palette_idx].b;
-            rgba_plane[4 * i + 3] = palette[palette_idx].a;
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width * 4; ++x) {
+                const auto src_idx = 4 * width * y + x;
+                const auto dst_idx = 4 * (width * y + x);
+                const auto pal_idx = MakeCLUTIndex(
+                    uint32_t{buffer[src_idx]} | (uint32_t{buffer[src_idx + 1]} << 8) |
+                        (uint32_t{buffer[src_idx + 2]} << 16) | (uint32_t{buffer[src_idx + 3]} << 24),
+                    shift, mask, csa, num_clut_colors);
+
+                rgba_plane[dst_idx + 0] = palette[pal_idx].r;
+                rgba_plane[dst_idx + 1] = palette[pal_idx].g;
+                rgba_plane[dst_idx + 2] = palette[pal_idx].b;
+                rgba_plane[dst_idx + 3] = palette[pal_idx].a;
+            }
         }
         break;
     default:
@@ -391,6 +435,10 @@ auto LoadBitmap(
         uint32_t clut_addr = 0;
         uint32_t clut_size = 0;
 
+        uint32_t clut_mask = 0;
+        uint32_t clut_shift = 0;
+        uint32_t clut_csa = 0;
+
         glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
         glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
 
@@ -476,12 +524,24 @@ auto LoadBitmap(
             break;
 
         case pspgu::CLUT_FORMAT: {
-            const auto clut_format = ge_command_arg & 3; // only 3 bits
+            // this has format
+            // | CMD | RESERVED | CSA | MSK | RESERVED | SHIFT | FORMAT |
+            // | 8   | 3        | 5   | 8   | 1        | 5     | 2      |
+
+            const auto clut_format = ge_command_arg & 3;
+            const auto clut_shift = (ge_command_arg & 0x0000001f) >> 2;
+            const auto clut_mask = (ge_command_arg & 0x0000ff00) >> 8;
+            const auto clut_csa = (ge_command_arg & 0x001f0000) >> 16;
+
             if (clut_format < eSceCLUTCount) {
                 ge_state.clut_format = static_cast<SceTextureClutFormat>(clut_format);
             } else {
                 logger.log(fmt::format("warning: incorrect CLUT format set {}", clut_format));
             }
+
+            ge_state.clut_shift = clut_shift;
+            ge_state.clut_mask = clut_mask;
+            ge_state.clut_csa = clut_csa;
 
             break;
         }
@@ -499,8 +559,8 @@ auto LoadBitmap(
         }
 
         case pspgu::CLUT_LOAD: {
-            const auto clut_num_colors = (ge_command_arg & 0x00ffffffu) * 8;
-            ge_state.clut_size = clut_num_colors;
+            const auto clut_num_bytes = (ge_command_arg & 0x0000003f) << 5;
+            ge_state.clut_size = clut_num_bytes;
             break;
         }
 
@@ -588,31 +648,39 @@ auto LoadBitmap(
     bitmap.uv_offset = ge_state.uv_offset;
     bitmap.uv_scale = ge_state.uv_scale;
 
-    bool is_format_matching_clut = true;
-    if (ge_state.clut_size != 0) {
-        switch (ge_state.texture_format) {
-        case eScePFIDX4: // max 0xf
-            is_format_matching_clut = (ge_state.clut_size <= 0x10);
-            break;
-        case eScePFIDX8: // max 0xff
-            is_format_matching_clut = (ge_state.clut_size <= 0x100);
-            break;
-        case eScePFIDX16: // max 0xffff
-            is_format_matching_clut = (ge_state.clut_size <= 0x10000);
-            break;
-        case eScePFIDX32: // max 0xffffffff
-            is_format_matching_clut = (ge_state.clut_size <= 0xffffffff);
-            break;
-        default:
-            is_format_matching_clut = false;
-            break;
-        }
-    }
+    const auto clut_num_colors = (ge_state.clut_size * 8) / GetClutBitWidth(ge_state.clut_format);
 
-    if (!is_format_matching_clut) {
-        throw GxtParseError{fmt::format(
-            "incorrect GE stat: clut size is {} but the pixel format is {}", ge_state.clut_size,
-            static_cast<uint32_t>(ge_state.texture_format))};
+    if (ge_state.clut_size != 0) {
+        if (ge_state.clut_mask == 0) {
+            switch (ge_state.texture_format) {
+            case eScePFIDX4:
+                ge_state.clut_mask = 0xfu;
+                break;
+            case eScePFIDX8:
+                ge_state.clut_mask = 0xffu;
+                break;
+            case eScePFIDX16:
+                ge_state.clut_mask = 0xffffu;
+                break;
+            case eScePFIDX32:
+                ge_state.clut_mask = 0xffffffffu;
+                break;
+            default:
+                break;
+            }
+
+            logger.log(
+                fmt::format("GE simulator has a palette set but mask is 0, setting default {}", ge_state.clut_mask));
+        }
+
+        logger.log(
+            fmt::format(
+                "CLUT is enabled with parameters:\n"
+                "\tclut_size: {} bytes ({} colors)\n"
+                "\tclut_mask: {}\n"
+                "\tclut_shift: {}\n"
+                "\tclut csa: {}\n",
+                ge_state.clut_size, clut_num_colors, ge_state.clut_mask, ge_state.clut_shift, ge_state.clut_csa));
     }
 
     // here we have to calculate a different stride
@@ -661,17 +729,19 @@ auto LoadBitmap(
     }
 
     if (is_palette_enabled) {
-        const auto palette = LoadPalette(command_reader, ge_state.clut_format, ge_state.clut_size, ge_state.clut_addr);
+        const auto palette = LoadPalette(command_reader, ge_state.clut_format, clut_num_colors, ge_state.clut_addr);
         if (is_unswizzle_needed) {
             const auto tex_buffer_stride = bitmap.rgba_plane = ImageDecodeCLUT(
                 palette, ge_state.texture_format,
                 UnswizzleBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
-                ge_state.texture_width, ge_state.texture_height);
+                ge_state.texture_width, ge_state.texture_height, ge_state.clut_shift, ge_state.clut_mask,
+                ge_state.clut_csa);
         } else {
             bitmap.rgba_plane = ImageDecodeCLUT(
                 palette, ge_state.texture_format,
                 AdjustBitmap(pixel_buffer, texture_byte_stride, texture_load_stride, ge_state.texture_height),
-                ge_state.texture_width, ge_state.texture_height);
+                ge_state.texture_width, ge_state.texture_height, ge_state.clut_shift, ge_state.clut_mask,
+                ge_state.clut_csa);
         }
     } else {
         if (is_unswizzle_needed) {

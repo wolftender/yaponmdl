@@ -5,6 +5,8 @@
 #include "graphics/shader.hpp"
 #include "graphics/texture.hpp"
 
+#include "render/text.hpp"
+
 class TextureViewer : public GLView {
 public:
     struct TexturedVertex {
@@ -39,6 +41,11 @@ protected:
     auto OnIdle(wxIdleEvent &event) -> void;
     auto OnMouseScroll(wxMouseEvent &event) -> void;
     auto OnMouseMotion(wxMouseEvent &event) -> void;
+    auto OnKeyDown(wxKeyEvent &event) -> void;
+
+    auto NextTexture() -> void;
+    auto PrevTexture() -> void;
+    auto RefreshText() -> void;
     auto ClampZoom() -> void;
 
 private:
@@ -53,11 +60,17 @@ private:
     glm::fvec2 center_ = glm::fvec2{0.0f};
     std::optional<glm::ivec2> prev_mouse_pos_ = std::nullopt;
 
+    render::FontContext font_context_;
+    std::optional<gl::ShaderProgram> text_shader_;
+    std::optional<render::FontContext::TextObject> label_text_;
+
     std::span<const uint8_t> gxt_buffer_;
     std::optional<gl::ShaderProgram> shader_texture_;
     std::optional<gl::ShaderProgram> shader_background_;
-    std::optional<gl::Texture> texture_;
     std::optional<gl::Mesh<TexturedVertex>> mesh_;
+
+    uint32_t texture_index_ = 0;
+    std::vector<gl::Texture> textures_;
 
     State state_ = TextureViewer::State::eIdle;
 };
