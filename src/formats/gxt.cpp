@@ -27,9 +27,11 @@ struct GxtHeader {
 
 using GxtParseError = std::runtime_error;
 
+constexpr auto kGxtByteOrder = util::bytes::BinaryReader::ByteOrder::eLittleEndian;
+
 template <typename T>
 auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.Read<T>();
+    const auto value = reader.Read<kGxtByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw GxtParseError{std::string{message.value()}};

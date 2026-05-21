@@ -28,9 +28,11 @@ struct GxxHeader {
 
 using GxxParseError = std::runtime_error;
 
+constexpr auto kGxxByteOrder = util::bytes::BinaryReader::ByteOrder::eLittleEndian;
+
 template <typename T>
 auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.Read<T>();
+    const auto value = reader.Read<kGxxByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw GxxParseError{std::string{message.value()}};
@@ -61,7 +63,7 @@ auto AssertReadStringAt(util::bytes::BinaryReader &reader, uint64_t offset) -> s
     uint8_t chr = 0;
 
     do {
-        const auto res = reader.Read<uint8_t>();
+        const auto res = reader.Read<kGxxByteOrder, uint8_t>();
         if (!res.has_value()) {
             break;
         }
@@ -82,7 +84,7 @@ auto AssertReadStringAt(util::bytes::BinaryReader &reader, uint64_t offset) -> s
 
 template <typename T>
 auto AssertReadAligned(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.ReadAligned<T>();
+    const auto value = reader.ReadAligned<kGxxByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw GxxParseError{std::string{message.value()}};

@@ -54,6 +54,8 @@ struct GmoChunk {
 constexpr uint32_t kChunkHeaderSize =
     sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t);
 
+constexpr auto kSceGmoByteOrder = util::bytes::BinaryReader::ByteOrder::eLittleEndian;
+
 /**
  * @brief Simple function to help with inline binary reads
  *
@@ -64,7 +66,7 @@ constexpr uint32_t kChunkHeaderSize =
  */
 template <typename T>
 auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.Read<T>();
+    const auto value = reader.Read<kSceGmoByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw GmoParseError{std::string{message.value()}};
@@ -78,7 +80,7 @@ auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_vie
 
 template <typename T>
 auto AssertReadAligned(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.ReadAligned<T>();
+    const auto value = reader.ReadAligned<kSceGmoByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw GmoParseError{std::string{message.value()}};

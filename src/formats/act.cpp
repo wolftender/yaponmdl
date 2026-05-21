@@ -12,6 +12,8 @@ namespace act {
 
 using ActParseError = std::runtime_error;
 
+constexpr auto kActByteOrder = util::bytes::BinaryReader::ByteOrder::eLittleEndian;
+
 auto ParseImageMimeType(u32 value) -> std::optional<ImageMimeType> {
     switch (value) {
     case 0x10000001:
@@ -183,7 +185,7 @@ auto ParseCommandType(u32 value) -> std::optional<CommandType> {
 
 template <typename T>
 auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
-    const auto value = reader.Read<T>();
+    const auto value = reader.Read<kActByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
             throw ActParseError{std::string{message.value()}};
@@ -218,7 +220,7 @@ template <typename T, size_t kDim> auto AssertReadVector(util::bytes::BinaryRead
 }
 
 template <typename T> auto AssertReadQuat(util::bytes::BinaryReader &reader) -> glm::qua<T> {
-    const auto result = reader.ReadQuat<T>();
+    const auto result = reader.ReadQuat<kActByteOrder, T>();
     if (!result.has_value()) {
         throw ActParseError{"failed to read quaternion"};
     }
@@ -234,7 +236,7 @@ auto AssertSizedProperty(util::bytes::BinaryReader &reader, u32 size) -> void {
 }
 
 auto ReadCommandType(BinaryReader &reader) -> std::optional<CommandType> {
-    const auto command_type = reader.Read<u32>();
+    const auto command_type = reader.Read<kActByteOrder, u32>();
     if (!command_type.has_value()) {
         return std::nullopt;
     }
