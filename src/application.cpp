@@ -13,6 +13,7 @@
 #include "formats/gmo.hpp"
 #include "formats/act.hpp"
 #include "formats/gxx.hpp"
+#include "formats/pssg.hpp"
 
 #include "generated/license.h"
 
@@ -349,6 +350,13 @@ public:
     }
 };
 
+class PssgWxLogger : public pssg::PssgLogger {
+public:
+    auto log(std::string_view message) const -> void override {
+        wxLogMessage("libpssg message: %s ", wxString{message.data(), message.size()});
+    }
+};
+
 ModelBrowserFrame::DirTextureRepository::DirTextureRepository(const std::string &path) {
     if (!fs::exists(path)) {
         return;
@@ -620,6 +628,27 @@ private:
     uint32_t flags_ = 0;
 };
 
+class PssgLoader final : public ModelViewer::ILoader {
+public:
+    PssgLoader(std::span<const uint8_t> pssg_buffer) : pssg_buffer_{pssg_buffer} {}
+
+    virtual auto Load([[maybe_unused]] render::hal::IDevice &device) const
+        -> std::unique_ptr<ModelViewer::IModelProxy> {
+        try {
+            PssgWxLogger pssg_logger;
+            const auto pssg_model = pssg::LoadFromMemory(pssg_buffer_, &pssg_logger);
+
+            return nullptr;
+        } catch (const std::exception &e) {
+            wxLogError(wxString::Format("libpssg fatal error: %s", e.what()));
+            return nullptr;
+        }
+    }
+
+private:
+    std::span<const uint8_t> pssg_buffer_;
+};
+
 auto ModelBrowserFrame::OnFileSelected([[maybe_unused]] wxCommandEvent &event) -> void {
     const auto full_path = dir_control_->GetFilePath();
     OpenNewFile(full_path);
@@ -692,6 +721,11 @@ auto ModelBrowserFrame::HandleNewFile() -> void {
             std::make_unique<GxxLoader>(current_file_, texture_repository_, gxx_load_flags), CreateCameraController(),
             notebook_right_);
         notebook_right_->AddPage(model_viewer_, "GXX Model view", true);
+    } else if (pssg::CheckHeader(current_file_)) {
+        default_camera_view_ = CameraMode::eAzimuth;
+        model_viewer_ =
+            new ModelDisplay(std::make_unique<PssgLoader>(current_file_), CreateCameraController(), notebook_right_);
+        notebook_right_->AddPage(model_viewer_, "PSSG Model view", true);
     }
 
     notebook_right_->AddPage(hex_viewer_, "Hex view", false);

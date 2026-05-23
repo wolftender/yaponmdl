@@ -123,6 +123,7 @@ set(SOURCES_LIST
     ${PROGRAM_SRC_DIR}/formats/gxt.cpp
     ${PROGRAM_SRC_DIR}/formats/gxp.cpp
     ${PROGRAM_SRC_DIR}/formats/gxx.cpp
+    ${PROGRAM_SRC_DIR}/formats/pssg.cpp
     ${PROGRAM_SRC_DIR}/graphics/gl.cpp
     ${PROGRAM_SRC_DIR}/graphics/shader.cpp
     ${PROGRAM_SRC_DIR}/graphics/buffer.cpp
