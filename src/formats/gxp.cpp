@@ -66,7 +66,7 @@ auto AssertReadStringAt(util::bytes::BinaryReader &reader, uint64_t offset) -> s
     return buffer.value();
 }
 
-class GxxConsoleLogger final : public GxpLogger {
+class GxpConsoleLogger final : public GxpLogger {
 public:
     auto log(std::string_view log_message) const -> void override {
         fmt::println("[libgxx console log] {}", log_message);
@@ -225,6 +225,11 @@ auto LoadObjectSection(const util::bytes::BinaryReader &parent_reader, uint32_t 
 }
 
 auto LoadFromMemory(const std::span<const uint8_t> buffer, const GxpLogger *logger) -> SceGxpFile {
+    GxpConsoleLogger console_logger;
+    if (!logger) {
+        logger = &console_logger;
+    }
+
     util::bytes::BinaryReader reader{buffer};
 
     SceGxpFile file;
