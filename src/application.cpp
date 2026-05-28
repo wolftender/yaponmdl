@@ -199,12 +199,12 @@ ModelBrowserFrame::ModelBrowserFrame()
 
 auto ModelBrowserFrame::LogTextureStats() const -> void {
     wxLogMessage(
-        fmt::format(
+        wxString{fmt::format(
             "texture scanning complete in {}, statistics:"
             "\n\tfound gxt files: {}"
             "\n\tfound fallback files: {}",
             std::string{working_dir_}, texture_repository_.GetNumGxtFiles(),
-            texture_repository_.GetNumFallbackFiles()));
+            texture_repository_.GetNumFallbackFiles())});
 }
 
 auto ModelBrowserFrame::RescanTextures() -> void {
@@ -466,7 +466,7 @@ auto ModelBrowserFrame::DirTextureRepository::LoadBitmapGxt(std::string_view nam
         return std::nullopt;
     }
 
-    wxLogMessage(fmt::format("texture repo: loading texture {} from {}", name, name));
+    wxLogMessage(wxString{fmt::format("texture repo: loading texture {} from {}", name, name)});
 
     auto &bm = bitmaps.front();
     return Bitmap{
