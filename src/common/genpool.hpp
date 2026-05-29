@@ -36,7 +36,7 @@ public:
                     .value = std::move(value),
                 });
 
-            return MakeId(slots_.size() - 1, 0);
+            return MakeId(static_cast<uint32_t>(slots_.size()) - 1, 0);
         }
 
         const auto free_index = free_list_.front();

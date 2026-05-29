@@ -150,14 +150,14 @@ auto ConvertGXX(
     std::vector<render::Model::MaterialId> material_map;
     std::vector<MeshData> mesh_map;
 
-    render::Model::Material::Description material_desc = {
+    render::Model::Material::Description fallback_material_desc = {
         .diffuse = std::nullopt,
         .normal = std::nullopt,
         .specular = std::nullopt,
         .color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
     };
 
-    const auto fallback_mat_id = model->AddMaterial(material_desc);
+    const auto fallback_mat_id = model->AddMaterial(fallback_material_desc);
     if (!fallback_mat_id.has_value()) {
         throw std::runtime_error{"failed to allocate fallback material"};
     }

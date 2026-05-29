@@ -35,7 +35,7 @@ struct GmoHeader {
  * It can be used to retrieve data from the file
  */
 struct GmoChunk {
-    uint64_t position;
+    uint32_t position;
 
     uint16_t type;
     uint16_t args_offset;
@@ -204,7 +204,7 @@ inline auto RefIndex(uint32_t ref) { return (0x0fff & (ref)); }
  */
 auto ReadChunk(util::bytes::BinaryReader &reader) -> GmoChunk {
     GmoChunk chunk = {};
-    chunk.position = reader.Position();
+    chunk.position = static_cast<uint32_t>(reader.Position());
     chunk.type = AssertRead<uint16_t>(reader, "invalid chunk");
     chunk.args_offset = AssertRead<uint16_t>(reader, "invalid chunk");
     chunk.next_offset = AssertRead<uint32_t>(reader, "invalid chunk");
@@ -704,7 +704,7 @@ private:
             num_weights = 0;
         }
 
-        array.num_weights = num_weights;
+        array.num_weights = static_cast<uint8_t>(num_weights);
 
         GMO_DEBUG_PRINT(
             logger_,
@@ -874,7 +874,7 @@ private:
 
             array.vertices.emplace_back(vertex);
 
-            const auto position = reader.Position();
+            const auto position = static_cast<uint32_t>(reader.Position());
             const auto aligned_position = (position + align) & ~align;
             if (aligned_position > position) {
                 (void)reader.ReadBuffer(aligned_position - position);

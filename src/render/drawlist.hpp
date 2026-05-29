@@ -262,7 +262,7 @@ public:
         auto GetLoop() const -> bool { return loop_; }
         auto GetTime() const -> float { return time_; }
         auto GetDuration() const -> float;
-        auto GetNumFrames() const -> uint32_t;
+        auto GetNumFrames() const -> size_t;
 
         auto SetLoop(bool loop) -> void { loop_ = loop; }
         auto SetMotion(MotionId motion) -> void;
