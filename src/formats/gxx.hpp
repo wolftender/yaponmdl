@@ -31,7 +31,7 @@ struct GxxVertex {
 };
 
 struct GxxMesh {
-    uint32_t id;
+    uint64_t id;
     uint32_t num_weights;
 
     std::vector<GxxVertex> vertices;

@@ -38,6 +38,13 @@
       }
     },
     {
+      "name": "linux-clang",
+      "displayName": "LLVM Clang Compiler on Liunx",
+      "description": "Preset for Linux Clang builds",
+      "hidden": true,
+      "inherits": "clang"
+    },
+    {
       "inherits": "msvc",
       "name": "msvc-x64-debug",
       "displayName": "MSVC x64 (Debug)",
@@ -98,6 +105,38 @@
       "name": "win-clang-x64-release",
       "displayName": "Windows LLVM x64 (Release)",
       "description": "Windows LLVM x64 Release preset",
+      "generator": "Ninja",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "inherits": "linux-clang",
+      "name": "linux-clang-x64-debug",
+      "displayName": "Linux LLVM x64 (Debug)",
+      "description": "Linux LLVM x64 Debug preset",
+      "generator": "Ninja",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "inherits": "linux-clang",
+      "name": "linux-clang-x64-release",
+      "displayName": "Linux LLVM x64 (Release)",
+      "description": "Linux LLVM x64 Release preset",
       "generator": "Ninja",
       "architecture": {
         "value": "x64",

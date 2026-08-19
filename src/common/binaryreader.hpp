@@ -1,5 +1,6 @@
 #pragma once
 #include <bit>
+#include <cstring>
 #include <optional>
 
 #include "byteutils.hpp"

@@ -46,7 +46,7 @@ auto Drawlist::Controller::GetDuration() const -> float {
     return 0.0f;
 }
 
-auto Drawlist::Controller::GetNumFrames() const -> uint32_t {
+auto Drawlist::Controller::GetNumFrames() const -> size_t {
     const auto *motion = model_->GetMotion(motion_);
     if (motion) {
         return motion->GetFrames().size();

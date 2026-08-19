@@ -37,9 +37,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm fmt)
 
 # wxwidgets
-find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc gl)
+if (WIN32)
+    find_package(wxWidgets CONFIG REQUIRED COMPONENTS core base stc gl)
+    set(FOUND_WX_LIBS wx::core wx::base wx::stc wx::gl)
+else()
+    find_package(wxWidgets REQUIRED COMPONENTS core base stc gl)
+    set(FOUND_WX_LIBS ${wxWidgets_LIBRARIES})
+    include(${wxWidgets_USE_FILE})
+endif()
 
-find_package(Git OPTIONAL)
+find_package(Git)
 if (Git_FOUND)
     execute_process(
         COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
@@ -171,4 +178,4 @@ else()
     target_compile_options(thirdparty PRIVATE -w)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> $<TARGET_OBJECTS:glad> fmt glm wx::core wx::base wx::stc wx::gl)
+target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:thirdparty> $<TARGET_OBJECTS:glad> fmt glm ${FOUND_WX_LIBS})

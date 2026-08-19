@@ -430,8 +430,8 @@ auto ParseSubmeshBlock(std::span<const u8> block_buffer) -> Model::AnySubmesh {
 
     std::span<const u8> vertex_buffer;
     std::vector<u32> indices;
-    act::SubmeshVertexLayout layout;
-    u32 material;
+    act::SubmeshVertexLayout layout = SubmeshVertexLayout::eVertexStatic;
+    u32 material = 0;
 
     while (auto command_type = ReadCommandType(block_reader)) {
         switch (*command_type) {
@@ -645,8 +645,8 @@ auto ParseAnimChannelBlock(std::span<const u8> block_buffer) -> Model::AnyAnimat
     BinaryReader block_reader{block_buffer};
 
     std::optional<u32> node;
-    AnimationPropertyType property;
-    AnimationInterpolationMode mode;
+    AnimationPropertyType property = AnimationPropertyType::eTranslation;
+    AnimationInterpolationMode mode = AnimationInterpolationMode::eStep;
 
     std::vector<f32> timeline;
     std::span<const u8> keyframe_buffer;

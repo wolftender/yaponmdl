@@ -119,6 +119,8 @@ auto ConvertGMOInterpolation(gmo::GmoFCurveInterpolation interpolation) -> rende
         return render::Model::Animation::InterpolationMode::eHermite;
     case gmo::GmoFCurveInterpolation::eCubic:
         return render::Model::Animation::InterpolationMode::eStep;
+    default:
+        throw std::runtime_error{fmt::format("invalid interpolation mode {}", static_cast<uint32_t>(interpolation))};
     }
 }
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string_view>
 
 #include "hexview.hpp"
@@ -118,7 +119,7 @@ auto HexViewer::UpdateTextControl(bool updated_size) -> void {
     const auto display_height = text_control_->LinesOnScreen();
 
     const uint64_t num_total_scroll_lines =
-        num_max_lines + std::min(0ull, buffer_view.size_bytes() % kBufferStride) + 5;
+        num_max_lines + std::min(size_t{0ull}, buffer_view.size_bytes() % kBufferStride) + 5;
     if (updated_size) {
         if (num_total_scroll_lines <= static_cast<uint32_t>(display_height)) {
             if (scroll_bar_->IsShown()) {

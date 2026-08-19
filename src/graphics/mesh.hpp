@@ -40,7 +40,7 @@ public:
     auto operator=(Mesh &&) -> Mesh & = default;
 
     inline auto Draw(uint64_t instances = 1) const {
-        Draw(instances, [&](const auto &_) {});
+        Draw(instances, [&](const auto &) {});
     }
 
     template <std::invocable<uint64_t> F> inline auto Draw(uint64_t instances, const F &&f) const {

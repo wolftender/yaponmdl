@@ -780,7 +780,7 @@ private:
 
             vertices.emplace_back(vertex);
 
-            const auto position = reader.Position();
+            const auto position = static_cast<uint32_t>(reader.Position());
             const auto aligned_position = (position + align) & ~align;
             if (aligned_position > position) {
                 (void)reader.ReadBuffer(aligned_position - position);

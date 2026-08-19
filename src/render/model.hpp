@@ -447,7 +447,7 @@ public:
             auto Start(Pose &pose, Data &animation_data) const -> void;
             auto Apply(float time, Pose &pose, Data &animation_data) const -> void;
 
-            virtual auto GetNumKeyframes() const -> uint32_t = 0;
+            virtual auto GetNumKeyframes() const -> size_t = 0;
             virtual auto GetKeyframeTime(uint32_t keyframe_id) const -> float = 0;
 
         protected:
@@ -485,7 +485,7 @@ public:
                     keyframes_.begin(), keyframes_.end(), [](const auto &a, const auto &b) { return a.time < b.time; });
             }
 
-            auto GetNumKeyframes() const -> uint32_t override { return keyframes_.size(); }
+            auto GetNumKeyframes() const -> size_t override { return keyframes_.size(); }
             auto GetKeyframeTime(uint32_t keyframe_id) const -> float override { return keyframes_[keyframe_id].time; }
 
         protected:
@@ -536,7 +536,7 @@ public:
         auto GetDuration() const -> float { return duration_; }
         auto GetName() const -> const std::string & { return name_; }
 
-        auto GetNodeChannelCount() const -> uint32_t { return node_channels_.size(); }
+        auto GetNodeChannelCount() const -> size_t { return node_channels_.size(); }
 
         auto SetDuration(float duration) -> void {
             if (duration >= 0.0f) {

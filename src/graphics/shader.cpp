@@ -95,9 +95,9 @@ auto ShaderProgram::CompileShader(GLContext::Executor executor, const GLenum typ
     auto handle = factories::MakeShader(executor, type);
 
     const char *ptr_source = source.data();
-    const auto len = static_cast<int>(source.size());
+    const auto source_len = static_cast<int>(source.size());
 
-    GL_CHECK(glShaderSource(handle, 1, &ptr_source, &len));
+    GL_CHECK(glShaderSource(handle, 1, &ptr_source, &source_len));
     GL_CHECK(glCompileShader(handle));
 
     GLint status = GL_FALSE;
@@ -105,13 +105,13 @@ auto ShaderProgram::CompileShader(GLContext::Executor executor, const GLenum typ
     if (GL_TRUE != status) {
         constexpr auto kMaxLogLength = 4096UL;
 
-        GLsizei len = 0;
+        GLsizei log_len = 0;
         std::array<char, kMaxLogLength> buffer;
 
         std::fill(buffer.begin(), buffer.end(), 0);
-        GL_CHECK(glGetShaderInfoLog(handle, kMaxLogLength, &len, buffer.data()));
+        GL_CHECK(glGetShaderInfoLog(handle, kMaxLogLength, &log_len, buffer.data()));
 
-        throw ShaderCompileError{std::string(buffer.data(), len)};
+        throw ShaderCompileError{std::string(buffer.data(), log_len)};
     }
 
     return handle;
