@@ -1,836 +1,1028 @@
-#include <array>
 #include <stdexcept>
 
 #include <fmt/format.h>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "formats/act.hpp"
 #include "common/binaryreader.hpp"
 
-#include <glm/gtc/type_ptr.hpp>
-
 namespace act {
 
-using ActParseError = std::runtime_error;
+constexpr auto kActByteOrder = BinaryReader::ByteOrder::eLittleEndian;
 
-constexpr auto kActByteOrder = util::bytes::BinaryReader::ByteOrder::eLittleEndian;
-
-auto ParseImageMimeType(u32 value) -> std::optional<ImageMimeType> {
-    switch (value) {
-    case 0x10000001:
-        return ImageMimeType::eRawBitmap;
-    case 0x10000002:
-        return ImageMimeType::ePngBitmap;
-    case 0x10000003:
-        return ImageMimeType::eJpgBitmap;
-    case 0x10000004:
-        return ImageMimeType::eTgaBitmap;
+constexpr auto ValueToActImageMimeType(u32 value) -> std::optional<ActImageMimeType> {
+    switch (static_cast<ActImageMimeType>(value)) {
+    case ActImageMimeType::eRawBitmap:
+    case ActImageMimeType::ePngBitmap:
+    case ActImageMimeType::eJpgBitmap:
+    case ActImageMimeType::eTgaBitmap:
+        return static_cast<ActImageMimeType>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseTextureWrapType(u32 value) -> std::optional<TextureWrapType> {
-    switch (value) {
-    case 0x10010001:
-        return TextureWrapType::eRepeat;
-    case 0x10010002:
-        return TextureWrapType::eClampToEdge;
-    case 0x10010003:
-        return TextureWrapType::eMirroredRepeat;
+constexpr auto ValueToActTextureWrapType(u32 value) -> std::optional<ActTextureWrapType> {
+    switch (static_cast<ActTextureWrapType>(value)) {
+    case ActTextureWrapType::eRepeat:
+    case ActTextureWrapType::eClampToEdge:
+    case ActTextureWrapType::eMirroredRepeat:
+        return static_cast<ActTextureWrapType>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseSubmeshVertexLayout(u32 value) -> std::optional<SubmeshVertexLayout> {
-    switch (value) {
-    case 0x10020001:
-        return SubmeshVertexLayout::eVertexStatic;
-    case 0x10020002:
-        return SubmeshVertexLayout::eVertexRigged;
+constexpr auto ValueToActSubmeshVertexLayout(u32 value) -> std::optional<ActSubmeshVertexLayout> {
+    switch (static_cast<ActSubmeshVertexLayout>(value)) {
+    case ActSubmeshVertexLayout::eVertexStatic:
+    case ActSubmeshVertexLayout::eVertexSkinned:
+        return static_cast<ActSubmeshVertexLayout>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseAnimInterpolationMode(u32 value) -> std::optional<AnimationInterpolationMode> {
-    switch (value) {
-    case 0x10030001:
-        return AnimationInterpolationMode::eLinear;
-    case 0x10030002:
-        return AnimationInterpolationMode::eCubicSpline;
+constexpr auto ValueToActInterpolationMode(u32 value) -> std::optional<ActInterpolationMode> {
+    switch (static_cast<ActInterpolationMode>(value)) {
+    case ActInterpolationMode::eLinear:
+    case ActInterpolationMode::eCubicSpline:
+    case ActInterpolationMode::eStep:
+    case ActInterpolationMode::eSlerp:
+    case ActInterpolationMode::eHermite:
+    case ActInterpolationMode::eCubic:
+        return static_cast<ActInterpolationMode>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseAnimPropertyType(u32 value) -> std::optional<AnimationPropertyType> {
-    switch (value) {
-    case 0x10040001:
-        return AnimationPropertyType::eTranslation;
-    case 0x10040002:
-        return AnimationPropertyType::eRotation;
-    case 0x10040003:
-        return AnimationPropertyType::eScale;
+constexpr auto ValueToActNodeProperty(u32 value) -> std::optional<ActNodeProperty> {
+    switch (static_cast<ActNodeProperty>(value)) {
+    case ActNodeProperty::eTranslation:
+    case ActNodeProperty::eRotation:
+    case ActNodeProperty::eScale:
+    case ActNodeProperty::eUvOffset:
+    case ActNodeProperty::eUvScale:
+    case ActNodeProperty::eAlpha:
+        return static_cast<ActNodeProperty>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseBlockType(u32 value) -> std::optional<BlockType> {
-    switch (value) {
-    case 0x20000001:
-        return BlockType::eImageBlock;
-    case 0x20000002:
-        return BlockType::eTextureBlock;
-    case 0x20000003:
-        return BlockType::eMaterialBlock;
-    case 0x20000004:
-        return BlockType::eNodeBlock;
-    case 0x20000005:
-        return BlockType::eMeshBlock;
-    case 0x20000006:
-        return BlockType::eSubmeshBlock;
-    case 0x20000007:
-        return BlockType::eSkinBlock;
-    case 0x20000008:
-        return BlockType::eSkinNodeBlock;
-    case 0x20000009:
-        return BlockType::eAnimationBlock;
-    case 0x2000000a:
-        return BlockType::eAnimChannelBlock;
+constexpr auto ValueToActBlockType(u32 value) -> std::optional<ActBlockType> {
+    switch (static_cast<ActBlockType>(value)) {
+    case ActBlockType::eImageBlock:
+    case ActBlockType::eTextureBlock:
+    case ActBlockType::eMaterialBlock:
+    case ActBlockType::eNodeBlock:
+    case ActBlockType::eMeshBlock:
+    case ActBlockType::eSubmeshBlock:
+    case ActBlockType::eSkinBlock:
+    case ActBlockType::eSkinNodeBlock:
+    case ActBlockType::eAnimationBlock:
+    case ActBlockType::eAnimChannelBlock:
+        return static_cast<ActBlockType>(value);
     default:
         return std::nullopt;
     }
 }
 
-auto ParseCommandType(u32 value) -> std::optional<CommandType> {
-    switch (value) {
-    case 0x30010001:
-        return CommandType::eImageSetMimeType;
-    case 0x30010002:
-        return CommandType::eImageSetDimensions;
-    case 0x30010003:
-        return CommandType::eImageSetBuffer;
-
-    case 0x30020001:
-        return CommandType::eTextureSetImage;
-    case 0x30020002:
-        return CommandType::eTextureSetWrapS;
-    case 0x30020003:
-        return CommandType::eTextureSetWrapT;
-
-    case 0x30030001:
-        return CommandType::eMaterialSetBaseColor;
-    case 0x30030002:
-        return CommandType::eMaterialSetRoughness;
-    case 0x30030003:
-        return CommandType::eMaterialSetMetallic;
-    case 0x30030004:
-        return CommandType::eMaterialSetAlbedoMap;
-    case 0x30030005:
-        return CommandType::eMaterialSetNormalMap;
-
-    case 0x30040001:
-        return CommandType::eNodeSetTranslation;
-    case 0x30040002:
-        return CommandType::eNodeSetRotation;
-    case 0x30040003:
-        return CommandType::eNodeSetScale;
-    case 0x30040004:
-        return CommandType::eNodeSetMesh;
-    case 0x30040005:
-        return CommandType::eNodeSetSkin;
-    case 0x30040006:
-        return CommandType::eNodeSetParent;
-
-    case 0x30050001:
-        return CommandType::eMeshAddSubmesh;
-
-    case 0x30060001:
-        return CommandType::eSubmeshSetLayout;
-    case 0x30060002:
-        return CommandType::eSubmeshSetVertices;
-    case 0x30060003:
-        return CommandType::eSubmeshSetIndices;
-    case 0x30060004:
-        return CommandType::eSubmeshSetMaterial;
-
-    case 0x30070001:
-        return CommandType::eSkinAddNode;
-
-    case 0x30080001:
-        return CommandType::eSkinNodeSetNode;
-    case 0x30080002:
-        return CommandType::eSkinNodeSetMatrix;
-
-    case 0x30090001:
-        return CommandType::eAnimationAddChannel;
-
-    case 0x300a0001:
-        return CommandType::eAnimChannelSetNode;
-    case 0x300a0002:
-        return CommandType::eAnimChannelSetProp;
-    case 0x300a0003:
-        return CommandType::eAnimChannelSetMode;
-    case 0x300a0004:
-        return CommandType::eAnimChannelSetTimeline;
-    case 0x300a0005:
-        return CommandType::eAnimChannelSetKeyframes;
-
+constexpr auto ValueToActCommandType(u32 value) -> std::optional<ActCommandType> {
+    switch (static_cast<ActCommandType>(value)) {
+    case ActCommandType::eImageSetMimeType:
+    case ActCommandType::eImageSetDimensions:
+    case ActCommandType::eImageSetBuffer:
+    case ActCommandType::eImageSetName:
+    case ActCommandType::eTextureSetImage:
+    case ActCommandType::eTextureSetWrapS:
+    case ActCommandType::eTextureSetWrapT:
+    case ActCommandType::eTextureSetName:
+    case ActCommandType::eMaterialSetBaseColor:
+    case ActCommandType::eMaterialSetRoughness:
+    case ActCommandType::eMaterialSetMetallic:
+    case ActCommandType::eMaterialSetAlbedoMap:
+    case ActCommandType::eMaterialSetNormalMap:
+    case ActCommandType::eMaterialSetUvOffset:
+    case ActCommandType::eMaterialSetUvScale:
+    case ActCommandType::eMaterialSetAlpha:
+    case ActCommandType::eMaterialSetName:
+    case ActCommandType::eNodeSetTranslation:
+    case ActCommandType::eNodeSetRotation:
+    case ActCommandType::eNodeSetScale:
+    case ActCommandType::eNodeSetMesh:
+    case ActCommandType::eNodeSetSkin:
+    case ActCommandType::eNodeSetParent:
+    case ActCommandType::eNodeSetUvOffset:
+    case ActCommandType::eNodeSetUvScale:
+    case ActCommandType::eNodeSetAlpha:
+    case ActCommandType::eNodeSetName:
+    case ActCommandType::eNodeSetDrawOrder:
+    case ActCommandType::eNodeSetBoundingBox:
+    case ActCommandType::eMeshAddSubmesh:
+    case ActCommandType::eSubmeshSetLayout:
+    case ActCommandType::eSubmeshSetVertices:
+    case ActCommandType::eSubmeshSetSkin:
+    case ActCommandType::eSubmeshSetIndices:
+    case ActCommandType::eSubmeshSetMaterial:
+    case ActCommandType::eSkinAddNode:
+    case ActCommandType::eSkinNodeSetNode:
+    case ActCommandType::eSkinNodeSetMatrix:
+    case ActCommandType::eAnimationAddChannel:
+    case ActCommandType::eAnimationSetName:
+    case ActCommandType::eAnimationAddFrameLoop:
+    case ActCommandType::eAnimChannelSetNode:
+    case ActCommandType::eAnimChannelSetProp:
+    case ActCommandType::eAnimChannelSetMode:
+    case ActCommandType::eAnimChannelSetKeyframes:
+    case ActCommandType::eAnimChannelSetName:
+        return static_cast<ActCommandType>(value);
     default:
         return std::nullopt;
     }
 }
 
 template <typename T>
-auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
+inline auto AssertRead(util::bytes::BinaryReader &reader, std::optional<std::string_view> message = std::nullopt) -> T {
     const auto value = reader.Read<kActByteOrder, T>();
     if (!value.has_value()) {
         if (message.has_value()) {
-            throw ActParseError{std::string{message.value()}};
+            throw std::runtime_error{std::string{message.value()}};
         } else {
-            throw ActParseError{fmt::format("invalid byte read at position {}", reader.Position())};
+            throw std::runtime_error{fmt::format("invalid byte read at position {}", reader.Position())};
         }
     }
 
     return value.value();
 }
 
-template <typename T, std::invocable<u32> F>
-    requires std::convertible_to<std::invoke_result_t<F, u32>, std::optional<T>>
-auto AssertReadEnum(util::bytes::BinaryReader &reader, F parser) -> T {
-    const auto raw = AssertRead<u32>(reader);
-    const auto enum_value = parser(raw);
-
-    if (!enum_value.has_value()) {
-        throw ActParseError{fmt::format("failed to parse act enum type from {}", raw)};
-    }
-
-    return enum_value.value();
-}
-
-template <typename T, size_t kDim> auto AssertReadVector(util::bytes::BinaryReader &reader) -> glm::vec<kDim, T> {
-    glm::vec<kDim, T> result;
-    for (uint32_t i = 0; i < kDim; ++i) {
+template <typename T, size_t N> auto AssertReadVector(util::bytes::BinaryReader &reader) -> glm::vec<N, T> {
+    glm::vec<N, T> result;
+    for (uint32_t i = 0; i < N; ++i) {
         result[i] = AssertRead<T>(reader);
     }
 
     return result;
 }
 
-template <typename T> auto AssertReadQuat(util::bytes::BinaryReader &reader) -> glm::qua<T> {
-    const auto result = reader.ReadQuat<kActByteOrder, T>();
-    if (!result.has_value()) {
-        throw ActParseError{"failed to read quaternion"};
-    }
+inline auto ReadCommandType(util::bytes::BinaryReader &reader) -> std::optional<ActCommandType> {
+    const auto raw_value = reader.Read<kActByteOrder, u32>();
 
-    return result.value();
-}
-
-auto AssertSizedProperty(util::bytes::BinaryReader &reader, u32 size) -> void {
-    const auto size_val = AssertRead<u32>(reader);
-    if (size_val != size) {
-        throw ActParseError{fmt::format("act assertion failure, size {} != {}", size_val, size)};
-    }
-}
-
-auto ReadCommandType(BinaryReader &reader) -> std::optional<CommandType> {
-    const auto command_type = reader.Read<kActByteOrder, u32>();
-    if (!command_type.has_value()) {
+    if (!raw_value.has_value()) {
         return std::nullopt;
     }
 
-    const auto command_type_enum = ParseCommandType(command_type.value());
-    return command_type_enum;
+    return ValueToActCommandType(raw_value.value());
 }
 
-auto ReadSizedBuffer(BinaryReader &reader) -> std::span<const u8> {
-    const auto buffer_size = AssertRead<u32>(reader);
-    const auto buffer = reader.ReadBuffer(buffer_size);
-
-    if (!buffer.has_value()) {
-        throw ActParseError{fmt::format("failed to read sized buffer of size {}", buffer_size)};
+template <IsPrimitiveType T> inline auto ReadCommandParameter(util::bytes::BinaryReader &reader) -> T {
+    const auto size_value = reader.Read<kActByteOrder, u32>();
+    if (!size_value.has_value()) {
+        throw std::runtime_error{"invalid command, size value is not present"};
     }
 
-    return buffer.value();
+    const auto data_size = size_value.value();
+    if (data_size != sizeof(T)) {
+        throw std::runtime_error{fmt::format("command size mismatch: {} != {}", data_size, sizeof(T))};
+    }
+
+    const auto parameter = reader.Read<kActByteOrder, T>();
+    if (!parameter.has_value()) {
+        throw std::runtime_error{fmt::format("incomplete command, expected {} bytes for value", data_size)};
+    }
+
+    return parameter.value();
 }
 
-auto ParseImageBlock(std::span<const u8> block_buffer) -> Model::Image {
-    BinaryReader block_reader{block_buffer};
-    Model::Image image{};
+template <typename T, std::invocable<u32> F>
+    requires std::is_same_v<std::underlying_type_t<T>, u32> &&
+             std::is_same_v<std::invoke_result_t<F, u32>, std::optional<T>>
+inline auto ReadCommandParameterEnum(util::bytes::BinaryReader &reader, F fnParser) -> T {
+    const auto raw = ReadCommandParameter<u32>(reader);
+    const auto parsed = fnParser(raw);
 
-    while (const auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eImageSetMimeType:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            image.mime_type = AssertReadEnum<ImageMimeType>(block_reader, ParseImageMimeType);
+    if (!parsed.has_value()) {
+        throw std::runtime_error{fmt::format("invalid value for enumeration {:#010x}", raw)};
+    }
+
+    return parsed.value();
+}
+
+inline auto ReadCommandParameterBuffer(util::bytes::BinaryReader &reader) -> std::span<const u8> {
+    const auto size_value = reader.Read<kActByteOrder, u32>();
+    if (!size_value.has_value()) {
+        throw std::runtime_error{"invalid command, size value is not present"};
+    }
+
+    const auto data_size = size_value.value();
+    const auto view = reader.ReadBuffer(data_size);
+
+    if (!view.has_value()) {
+        throw std::runtime_error{fmt::format("incomplete command, expected {} bytes for buffer", data_size)};
+    }
+
+    return view.value();
+}
+
+inline auto ReadCommandParameterString(util::bytes::BinaryReader &reader) -> std::string_view {
+    const auto buffer_view = ReadCommandParameterBuffer(reader);
+    return std::string_view{std::bit_cast<const char *>(buffer_view.data()), buffer_view.size_bytes()};
+}
+
+template <typename T, int N> auto ReadCommandParameterVec(util::bytes::BinaryReader &reader) -> glm::vec<N, T> {
+    const auto size_value = reader.Read<kActByteOrder, u32>();
+    if (!size_value.has_value()) {
+        throw std::runtime_error{"invalid command, size value is not present"};
+    }
+
+    const auto data_size = size_value.value();
+    if (data_size != sizeof(T) * N) {
+        throw std::runtime_error{fmt::format("command size mismatch: {} != {}", data_size, N * sizeof(T))};
+    }
+
+    glm::vec<N, T> value;
+    for (int i = 0; i < N; ++i) {
+        const auto opt = reader.Read<kActByteOrder, T>();
+        if (!opt.has_value()) {
+            throw std::runtime_error{fmt::format("not enough data for vector of size {}", N)};
+        }
+
+        value[i] = opt.value();
+    }
+
+    return value;
+}
+
+auto ReadCommandParameterQuat(util::bytes::BinaryReader &reader) -> glm::fquat {
+    const auto size_value = reader.Read<kActByteOrder, u32>();
+    if (!size_value.has_value()) {
+        throw std::runtime_error{"invalid command, size value is not present"};
+    }
+
+    const auto data_size = size_value.value();
+    if (data_size != sizeof(f32) * 4) {
+        throw std::runtime_error{fmt::format("command size mismatch: {} != {}", data_size, 4 * sizeof(f32))};
+    }
+
+    const auto value = reader.ReadQuat<kActByteOrder>();
+    if (!value.has_value()) {
+        throw std::runtime_error{fmt::format("cannot parse quaternion")};
+    }
+
+    return value.value();
+}
+
+auto ReadImageBlock(std::span<const u8> buffer) -> ActImage {
+    util::bytes::BinaryReader reader{buffer};
+    ActImage image;
+
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eImageSetMimeType:
+            image.mime_type = ReadCommandParameterEnum<ActImageMimeType>(reader, ValueToActImageMimeType);
             break;
-        case act::CommandType::eImageSetDimensions:
-            AssertSizedProperty(block_reader, sizeof(u32) * 2);
-            image.dimensions = AssertReadVector<u32, 2>(block_reader);
+
+        case ActCommandType::eImageSetDimensions:
+            image.dimensions = ReadCommandParameterVec<u32, 2>(reader);
             break;
-        case act::CommandType::eImageSetBuffer: {
-            const auto buffer = ReadSizedBuffer(block_reader);
-            image.buffer.assign(buffer.begin(), buffer.end());
+
+        case ActCommandType::eImageSetBuffer: {
+            const auto view = ReadCommandParameterBuffer(reader);
+            image.buffer.assign(view.begin(), view.end());
             break;
         }
+
+        case ActCommandType::eImageSetName:
+            image.name = ReadCommandParameterString(reader);
+            break;
+
         default:
-            throw ActParseError{
-                fmt::format("act: invalid image command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid image command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return image;
 }
 
-auto ParseTextureBlock(std::span<const u8> block_buffer) -> Model::Texture {
-    BinaryReader block_reader{block_buffer};
-    Model::Texture texture = {};
+auto ReadTextureBlock(std::span<const u8> buffer) -> ActTexture {
+    util::bytes::BinaryReader reader{buffer};
+    ActTexture texture;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eTextureSetWrapS:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            texture.wrap_s = AssertReadEnum<TextureWrapType>(block_reader, ParseTextureWrapType);
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eTextureSetImage:
+            texture.image_id = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eTextureSetWrapT:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            texture.wrap_t = AssertReadEnum<TextureWrapType>(block_reader, ParseTextureWrapType);
+        case ActCommandType::eTextureSetWrapS:
+            texture.wrap_s = ReadCommandParameterEnum<ActTextureWrapType>(reader, ValueToActTextureWrapType);
             break;
 
-        case act::CommandType::eTextureSetImage:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            texture.image_id = AssertRead<u32>(block_reader);
+        case ActCommandType::eTextureSetWrapT:
+            texture.wrap_t = ReadCommandParameterEnum<ActTextureWrapType>(reader, ValueToActTextureWrapType);
+            break;
+
+        case ActCommandType::eTextureSetName:
+            texture.name = ReadCommandParameterString(reader);
             break;
 
         default:
-            throw ActParseError{
-                fmt::format("act: invalid texture command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid texture command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return texture;
 }
 
-auto ParseMaterialBlock(std::span<const u8> block_buffer) -> Model::Material {
-    BinaryReader block_reader{block_buffer};
-    Model::Material material = {};
+auto ReadMaterialBlock(std::span<const u8> buffer) -> ActMaterial {
+    util::bytes::BinaryReader reader{buffer};
+    ActMaterial material;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eMaterialSetBaseColor:
-            AssertSizedProperty(block_reader, sizeof(f32) * 4);
-            material.base_color = AssertReadVector<f32, 4>(block_reader);
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eMaterialSetBaseColor:
+            material.base_color = ReadCommandParameterVec<f32, 4>(reader);
             break;
 
-        case act::CommandType::eMaterialSetMetallic:
-            AssertSizedProperty(block_reader, sizeof(f32));
-            material.metallic = AssertRead<f32>(block_reader);
+        case ActCommandType::eMaterialSetRoughness:
+            material.roughness = ReadCommandParameter<f32>(reader);
             break;
 
-        case act::CommandType::eMaterialSetRoughness:
-            AssertSizedProperty(block_reader, sizeof(f32));
-            material.roughness = AssertRead<f32>(block_reader);
+        case ActCommandType::eMaterialSetMetallic:
+            material.metallic = ReadCommandParameter<f32>(reader);
             break;
 
-        case act::CommandType::eMaterialSetAlbedoMap:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            material.albedo_map_id = AssertRead<u32>(block_reader);
+        case ActCommandType::eMaterialSetAlbedoMap:
+            material.albedo_map_id = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eMaterialSetNormalMap:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            material.normal_map_id = AssertRead<u32>(block_reader);
+        case ActCommandType::eMaterialSetNormalMap:
+            material.normal_map_id = ReadCommandParameter<u32>(reader);
+            break;
+
+        case ActCommandType::eMaterialSetUvOffset:
+            material.uv_offset = ReadCommandParameterVec<f32, 2>(reader);
+            break;
+
+        case ActCommandType::eMaterialSetUvScale:
+            material.uv_scale = ReadCommandParameterVec<f32, 2>(reader);
+            break;
+
+        case ActCommandType::eMaterialSetAlpha:
+            material.alpha = ReadCommandParameter<float>(reader);
+            break;
+
+        case ActCommandType::eMaterialSetName:
+            material.name = ReadCommandParameterString(reader);
             break;
 
         default:
-            throw ActParseError{
-                fmt::format("act: invalid material command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid material command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return material;
 }
 
-auto ParseNodeBlock(std::span<const u8> block_buffer) -> Model::Node {
-    BinaryReader block_reader{block_buffer};
-    Model::Node node = {};
+auto ReadNodeBlock(std::span<const u8> buffer) -> ActNode {
+    util::bytes::BinaryReader reader{buffer};
+    ActNode node;
 
-    node.translation = glm::fvec3{0.0f, 0.0f, 0.0f};
-    node.scale = glm::fvec3{1.0f, 1.0f, 1.0f};
-    node.rotation = glm::fquat{1.0f, 0.0f, 0.0f, 0.0f}; // this constructor has order WXYZ
-
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eNodeSetMesh:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            node.mesh_id = AssertRead<u32>(block_reader);
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eNodeSetTranslation:
+            node.translation = ReadCommandParameterVec<f32, 3>(reader);
             break;
 
-        case act::CommandType::eNodeSetRotation:
-            AssertSizedProperty(block_reader, sizeof(f32) * 4);
-            node.rotation = AssertReadQuat<f32>(block_reader);
+        case ActCommandType::eNodeSetRotation:
+            node.rotation = ReadCommandParameterQuat(reader);
             break;
 
-        case act::CommandType::eNodeSetScale:
-            AssertSizedProperty(block_reader, sizeof(f32) * 3);
-            node.scale = AssertReadVector<f32, 3>(block_reader);
+        case ActCommandType::eNodeSetScale:
+            node.scale = ReadCommandParameterVec<f32, 3>(reader);
             break;
 
-        case act::CommandType::eNodeSetTranslation:
-            AssertSizedProperty(block_reader, sizeof(f32) * 3);
-            node.translation = AssertReadVector<f32, 3>(block_reader);
+        case ActCommandType::eNodeSetMesh:
+            node.mesh_id = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eNodeSetSkin:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            node.skin_id = AssertRead<u32>(block_reader);
+        case ActCommandType::eNodeSetSkin:
+            node.skin_id = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eNodeSetParent:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            node.parent_id = AssertRead<u32>(block_reader);
+        case ActCommandType::eNodeSetParent:
+            node.parent_id = ReadCommandParameter<u32>(reader);
             break;
+
+        case ActCommandType::eNodeSetUvOffset:
+            node.uv_offset = ReadCommandParameterVec<f32, 2>(reader);
+            break;
+
+        case ActCommandType::eNodeSetUvScale:
+            node.uv_scale = ReadCommandParameterVec<f32, 2>(reader);
+            break;
+
+        case ActCommandType::eNodeSetAlpha:
+            node.alpha = ReadCommandParameter<f32>(reader);
+            break;
+
+        case ActCommandType::eNodeSetName:
+            node.name = ReadCommandParameterString(reader);
+            break;
+
+        case ActCommandType::eNodeSetDrawOrder:
+            node.draw_order = ReadCommandParameter<u32>(reader);
+            break;
+
+        case ActCommandType::eNodeSetBoundingBox: {
+            const auto size_value = reader.Read<kActByteOrder, u32>();
+            if (!size_value.has_value()) {
+                throw std::runtime_error{"invalid command, size value is not present"};
+            }
+
+            const auto data_size = size_value.value();
+            if (data_size != sizeof(f32) * 6) {
+                throw std::runtime_error{fmt::format("command size mismatch: {} != {}", data_size, sizeof(f32) * 6)};
+            }
+
+            for (int i = 0; i < 3; ++i) {
+                const auto opt = reader.Read<kActByteOrder, f32>();
+                if (!opt.has_value()) {
+                    throw std::runtime_error{fmt::format("not enough data for vector of size 3")};
+                }
+
+                node.bounding_min[i] = opt.value();
+            }
+
+            for (int i = 0; i < 3; ++i) {
+                const auto opt = reader.Read<kActByteOrder, f32>();
+                if (!opt.has_value()) {
+                    throw std::runtime_error{fmt::format("not enough data for vector of size 3")};
+                }
+
+                node.bounding_max[i] = opt.value();
+            }
+
+            break;
+        }
 
         default:
-            throw ActParseError{fmt::format("act: invalid node command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid node command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return node;
 }
 
-auto ParseMeshBlock(std::span<const u8> block_buffer) -> Model::Mesh {
-    BinaryReader block_reader{block_buffer};
-    Model::Mesh mesh = {};
+auto ReadMeshBlock(std::span<const u8> buffer) -> ActMesh {
+    util::bytes::BinaryReader reader{buffer};
+    ActMesh mesh;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eMeshAddSubmesh: {
-            u32 submesh;
-            AssertSizedProperty(block_reader, sizeof(u32));
-            submesh = AssertRead<u32>(block_reader);
-            mesh.submesh_ids.emplace_back(submesh);
-
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eMeshAddSubmesh:
+            mesh.submesh_ids.emplace_back(ReadCommandParameter<u32>(reader));
             break;
-        }
 
         default:
-            throw ActParseError{fmt::format("act: invalid mesh command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid mesh command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return mesh;
 }
 
-auto ParseSubmeshBlock(std::span<const u8> block_buffer) -> Model::AnySubmesh {
-    BinaryReader block_reader{block_buffer};
+template <IsPrimitiveType T> auto ParseBuffer(std::span<const u8> buffer) -> std::vector<T> {
+    util::bytes::BinaryReader reader{buffer};
+    const auto num_elements = buffer.size_bytes() / sizeof(T);
 
-    std::span<const u8> vertex_buffer;
-    std::vector<u32> indices;
-    act::SubmeshVertexLayout layout = SubmeshVertexLayout::eVertexStatic;
-    u32 material = 0;
+    std::vector<T> values;
+    values.resize(num_elements);
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eSubmeshSetLayout:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            layout = AssertReadEnum<SubmeshVertexLayout>(block_reader, ParseSubmeshVertexLayout);
+    for (uint32_t i = 0; i < num_elements; ++i) {
+        values[i] = AssertRead<T>(reader);
+    }
+
+    return values;
+}
+
+auto ParseMatrixBuffer(std::span<const u8> buffer) -> glm::fmat4x4 {
+    if (buffer.size_bytes() != sizeof(f32) * 16) {
+        throw std::runtime_error{
+            fmt::format("invalid matrix4x4 buffer with size {} (expected: {})", buffer.size_bytes(), sizeof(f32) * 16)};
+    }
+
+    const auto float_values = ParseBuffer<f32>(buffer);
+    return glm::make_mat4x4(float_values.data());
+}
+
+template <VertexType V> auto ParseVertexBuffer(std::span<const u8> buffer) -> std::vector<V>;
+
+template <> auto ParseVertexBuffer<ActVertexStatic>(std::span<const u8> buffer) -> std::vector<ActVertexStatic> {
+    constexpr size_t kBytesPerVertex = sizeof(f32) * 16;
+    util::bytes::BinaryReader reader{buffer};
+
+    const auto num_vertices = buffer.size_bytes() / kBytesPerVertex;
+    std::vector<ActVertexStatic> vertices;
+
+    vertices.resize(num_vertices);
+
+    for (uint32_t i = 0; i < num_vertices; ++i) {
+        auto &vertex = vertices[i];
+        vertex.position = AssertReadVector<f32, 3>(reader);
+        vertex.normal = AssertReadVector<f32, 3>(reader);
+        vertex.texcoord = AssertReadVector<f32, 2>(reader);
+        vertex.color = AssertReadVector<f32, 4>(reader);
+        vertex.tangent = AssertReadVector<f32, 4>(reader);
+    }
+
+    return vertices;
+}
+
+template <> auto ParseVertexBuffer<ActVertexSkinned>(std::span<const u8> buffer) -> std::vector<ActVertexSkinned> {
+    constexpr size_t kBytesPerVertex = sizeof(f32) * 24 + sizeof(u32) * 8;
+    util::bytes::BinaryReader reader{buffer};
+
+    const auto num_vertices = buffer.size_bytes() / kBytesPerVertex;
+    std::vector<ActVertexSkinned> vertices;
+
+    vertices.resize(num_vertices);
+
+    for (uint32_t i = 0; i < num_vertices; ++i) {
+        auto &vertex = vertices[i];
+        vertex.position = AssertReadVector<f32, 3>(reader);
+        vertex.normal = AssertReadVector<f32, 3>(reader);
+        vertex.texcoord = AssertReadVector<f32, 2>(reader);
+        vertex.color = AssertReadVector<f32, 4>(reader);
+        vertex.tangent = AssertReadVector<f32, 4>(reader);
+
+        vertex.joints[0] = AssertRead<u32>(reader);
+        vertex.joints[1] = AssertRead<u32>(reader);
+        vertex.joints[2] = AssertRead<u32>(reader);
+        vertex.joints[3] = AssertRead<u32>(reader);
+        vertex.joints[4] = AssertRead<u32>(reader);
+        vertex.joints[5] = AssertRead<u32>(reader);
+        vertex.joints[6] = AssertRead<u32>(reader);
+        vertex.joints[7] = AssertRead<u32>(reader);
+
+        vertex.weights[0] = AssertRead<f32>(reader);
+        vertex.weights[1] = AssertRead<f32>(reader);
+        vertex.weights[2] = AssertRead<f32>(reader);
+        vertex.weights[3] = AssertRead<f32>(reader);
+        vertex.weights[4] = AssertRead<f32>(reader);
+        vertex.weights[5] = AssertRead<f32>(reader);
+        vertex.weights[6] = AssertRead<f32>(reader);
+        vertex.weights[7] = AssertRead<f32>(reader);
+    }
+
+    return vertices;
+}
+
+auto ReadSubmeshBlock(std::span<const u8> buffer) -> ActAnySubmesh {
+    util::bytes::BinaryReader reader{buffer};
+
+    std::optional<ActSubmeshVertexLayout> layout = std::nullopt;
+    std::optional<std::span<const u8>> index_buffer = std::nullopt;
+    std::optional<std::span<const u8>> vertex_buffer = std::nullopt;
+    std::optional<u32> material_id = std::nullopt;
+    std::optional<u32> skin_id = std::nullopt;
+
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eSubmeshSetLayout:
+            layout = ReadCommandParameterEnum<ActSubmeshVertexLayout>(reader, ValueToActSubmeshVertexLayout);
             break;
 
-        case act::CommandType::eSubmeshSetIndices: {
-            u32 num_indices;
-            num_indices = AssertRead<u32>(block_reader);
-
-            num_indices = num_indices / sizeof(u32);
-            indices.reserve(num_indices);
-            u32 index;
-
-            for (auto i = 0u; i < num_indices; ++i) {
-                index = AssertRead<u32>(block_reader);
-                indices.emplace_back(index);
-            }
-
+        case ActCommandType::eSubmeshSetMaterial:
+            material_id = ReadCommandParameter<u32>(reader);
             break;
-        }
 
-        case act::CommandType::eSubmeshSetVertices: {
-            vertex_buffer = ReadSizedBuffer(block_reader);
+        case ActCommandType::eSubmeshSetSkin:
+            skin_id = ReadCommandParameter<u32>(reader);
             break;
-        }
 
-        case act::CommandType::eSubmeshSetMaterial:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            material = AssertRead<u32>(block_reader);
+        case ActCommandType::eSubmeshSetVertices:
+            vertex_buffer = ReadCommandParameterBuffer(reader);
+            break;
+
+        case ActCommandType::eSubmeshSetIndices:
+            index_buffer = ReadCommandParameterBuffer(reader);
             break;
 
         default:
-            throw ActParseError{fmt::format("act: invalid mesh command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid submesh command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
-    // we already know the vertex type so we can parse it now
-    if (SubmeshVertexLayout::eVertexStatic == layout) {
-        Model::SubMesh<VertexStatic> submesh = {};
+    // build submesh
+    if (!layout.has_value() || !index_buffer.has_value() || !vertex_buffer.has_value() || !material_id.has_value()) {
+        throw std::runtime_error{"incomplete submesh block, cannot parse"};
+    }
 
-        submesh.indices = std::move(indices);
-        submesh.layout = layout;
-        submesh.material = material;
-
-        constexpr size_t kBytesPerVertex = 15 * 4; // fields * bytes per field
-        const auto num_vertices = vertex_buffer.size() / kBytesPerVertex;
-
-        if (0ull != vertex_buffer.size() % kBytesPerVertex) {
-            throw ActParseError{fmt::format("act: invalid vertex buffer size")};
-        }
-
-        submesh.vertices.resize(num_vertices);
-        BinaryReader vertex_reader{vertex_buffer};
-
-        for (size_t i = 0; i < num_vertices; ++i) {
-            submesh.vertices[i].position = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].normal = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].texcoord = AssertReadVector<f32, 2>(vertex_reader);
-            submesh.vertices[i].color = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].tangent = AssertReadVector<f32, 4>(vertex_reader);
-        }
-
-        return submesh;
-    } else if (SubmeshVertexLayout::eVertexRigged == layout) {
-        Model::SubMesh<VertexRigged> submesh = {};
-
-        submesh.indices = std::move(indices);
-        submesh.layout = layout;
-        submesh.material = material;
-
-        constexpr size_t kBytesPerVertex = 23 * 4; // fields * bytes per field
-        const auto num_vertices = vertex_buffer.size() / kBytesPerVertex;
-
-        if (0ull != vertex_buffer.size() % kBytesPerVertex) {
-            throw ActParseError{fmt::format("act: invalid vertex buffer size")};
-        }
-
-        submesh.vertices.resize(num_vertices);
-        BinaryReader vertex_reader{vertex_buffer};
-
-        for (size_t i = 0; i < num_vertices; ++i) {
-            submesh.vertices[i].position = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].normal = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].texcoord = AssertReadVector<f32, 2>(vertex_reader);
-            submesh.vertices[i].color = AssertReadVector<f32, 3>(vertex_reader);
-            submesh.vertices[i].tangent = AssertReadVector<f32, 4>(vertex_reader);
-            submesh.vertices[i].joints = AssertReadVector<u32, 4>(vertex_reader);
-            submesh.vertices[i].weights = AssertReadVector<f32, 4>(vertex_reader);
-        }
-
-        return submesh;
-    } else {
-        throw ActParseError{fmt::format("act: unsupported vertex layout type")};
+    switch (layout.value()) {
+    case ActSubmeshVertexLayout::eVertexStatic:
+        return ActStaticSubmesh{
+            .layout = layout.value(),
+            .vertices = ParseVertexBuffer<ActVertexStatic>(vertex_buffer.value()),
+            .indices = ParseBuffer<u32>(index_buffer.value()),
+            .material = material_id.value(),
+        };
+    case ActSubmeshVertexLayout::eVertexSkinned:
+        return ActSkinnedSubmesh{
+            .layout = layout.value(),
+            .vertices = ParseVertexBuffer<ActVertexSkinned>(vertex_buffer.value()),
+            .indices = ParseBuffer<u32>(index_buffer.value()),
+            .material = material_id.value(),
+            .skin_id = skin_id,
+        };
+    default:
+        throw std::runtime_error{"invalid vertex layout for submesh"};
     }
 }
 
-auto ParseSkinBlock(std::span<const u8> block_buffer) -> Model::Skin {
-    BinaryReader block_reader{block_buffer};
-    Model::Skin skin = {};
+auto ReadSkinBlock(std::span<const u8> buffer) -> ActSkin {
+    util::bytes::BinaryReader reader{buffer};
+    ActSkin skin;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eSkinAddNode: {
-            u32 node;
-            AssertSizedProperty(block_reader, sizeof(u32));
-            node = AssertRead<u32>(block_reader);
-            skin.skin_node_ids.emplace_back(node);
-
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eSkinAddNode:
+            skin.skin_node_ids.emplace_back(ReadCommandParameter<u32>(reader));
             break;
-        }
 
         default:
-            throw ActParseError{fmt::format("act: invalid skin command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid skin command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return skin;
 }
 
-auto ParseSkinNodeBlock(std::span<const u8> block_buffer) -> Model::SkinNode {
-    BinaryReader block_reader{block_buffer};
-    Model::SkinNode skin_node = {};
+auto ReadSkinNodeBlock(std::span<const u8> buffer) -> ActSkinNode {
+    util::bytes::BinaryReader reader{buffer};
+    ActSkinNode skin_node;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eSkinNodeSetNode:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            skin_node.node_id = AssertRead<u32>(block_reader);
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eSkinNodeSetNode:
+            skin_node.node_id = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eSkinNodeSetMatrix: {
-            auto matrix_buffer = ReadSizedBuffer(block_reader);
-            if (16 * sizeof(f32) != matrix_buffer.size_bytes()) {
-                throw ActParseError{fmt::format("act: matrix buffer has invalid size, expected 16 x f32")};
-            }
-
-            BinaryReader matrix_reader{matrix_buffer};
-            std::array<f32, 16> matrix_values;
-            for (size_t i = 0; i < 16; ++i) {
-                matrix_values[i] = AssertRead<f32>(matrix_reader);
-            }
-
-            skin_node.inverse_bind_matrix = glm::make_mat4x4(matrix_values.data());
+        case ActCommandType::eSkinNodeSetMatrix:
+            skin_node.inverse_bind_matrix = ParseMatrixBuffer(ReadCommandParameterBuffer(reader));
             break;
-        }
 
         default:
-            throw ActParseError{
-                fmt::format("act: invalid skin node command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid skin node command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return skin_node;
 }
 
-auto ParseAnimationBlock(std::span<const u8> block_buffer) -> Model::Animation {
-    BinaryReader block_reader{block_buffer};
-    Model::Animation animation = {};
+auto ReadAnimationBlock(std::span<const u8> buffer) -> ActAnimation {
+    util::bytes::BinaryReader reader{buffer};
+    ActAnimation animation;
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eAnimationAddChannel: {
-            u32 channel;
-            AssertSizedProperty(block_reader, sizeof(u32));
-            channel = AssertRead<u32>(block_reader);
-            animation.channel_ids.emplace_back(channel);
-
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eAnimationAddChannel:
+            animation.channel_ids.emplace_back(ReadCommandParameter<u32>(reader));
             break;
-        }
+
+        case ActCommandType::eAnimationAddFrameLoop:
+            animation.frame_loop = ReadCommandParameterVec<f32, 2>(reader);
+            break;
+
+        case ActCommandType::eAnimationSetName:
+            animation.name = ReadCommandParameterString(reader);
+            break;
 
         default:
-            throw ActParseError{
-                fmt::format("act: invalid animation command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{fmt::format("invalid animation command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
     return animation;
 }
 
-template <AnimationPropertyType PropertyType>
-auto ParseKeyframeData(std::span<const u8> buffer, const std::vector<f32> &timeline)
-    -> std::vector<typename Model::AnimationChannel<PropertyType>::Keyframe> {
-    using Channel = Model::AnimationChannel<PropertyType>;
-    using DataType = Channel::Traits::DataType;
+template <typename T> struct GlmNumComponents;
 
-    const auto num_keyframes = timeline.size();
-    BinaryReader reader{buffer};
-    std::vector<typename Model::AnimationChannel<PropertyType>::Keyframe> keyframes{num_keyframes};
+template <glm::length_t L, typename T>
+struct GlmNumComponents<glm::vec<L, T>> : std::integral_constant<glm::length_t, L> {};
 
-    if constexpr (std::is_same_v<glm::fvec3, DataType>) {
-        for (size_t i = 0; i < num_keyframes; ++i) {
-            keyframes[i].time = timeline[i];
-            keyframes[i].value = AssertReadVector<f32, 3>(reader);
-        }
-    } else if constexpr (std::is_same_v<glm::fquat, DataType>) {
-        for (size_t i = 0; i < num_keyframes; ++i) {
-            keyframes[i].time = timeline[i];
-            keyframes[i].value = AssertReadQuat<f32>(reader);
-        }
-    } else {
-        static_assert(false, "unsupported keyframe type");
+template <ActNodeProperty Property>
+auto ReadKeyframes(std::span<const u8> buffer, ActAnimationChannel<Property> &channel) -> void {
+    constexpr auto dimensions = GlmNumComponents<typename ActAnimationChannel<Property>::Traits::DataType>::value;
+    const auto num_values_per_keyframe = 1 + dimensions;
+    const auto num_keyframes = buffer.size_bytes() / sizeof(f32) / num_values_per_keyframe;
+
+    util::bytes::BinaryReader reader{buffer};
+    channel.keyframes.resize(num_keyframes);
+
+    for (uint32_t i = 0; i < num_keyframes; ++i) {
+        auto &keyframe = channel.keyframes[i];
+
+        keyframe.time = AssertRead<f32>(reader);
+        keyframe.value = AssertReadVector<f32, dimensions>(reader);
     }
-
-    return keyframes;
 }
 
-auto ParseAnimChannelBlock(std::span<const u8> block_buffer) -> Model::AnyAnimationChannel {
-    BinaryReader block_reader{block_buffer};
+template <>
+auto ReadKeyframes<ActNodeProperty::eRotation>(
+    std::span<const u8> buffer, ActAnimationChannel<ActNodeProperty::eRotation> &channel) -> void {
+    const auto num_values_per_keyframe = 5;
+    const auto num_keyframes = buffer.size_bytes() / sizeof(f32) / num_values_per_keyframe;
 
-    std::optional<u32> node;
-    AnimationPropertyType property = AnimationPropertyType::eTranslation;
-    AnimationInterpolationMode mode = AnimationInterpolationMode::eStep;
+    util::bytes::BinaryReader reader{buffer};
+    channel.keyframes.resize(num_keyframes);
 
-    std::vector<f32> timeline;
-    std::span<const u8> keyframe_buffer;
+    for (uint32_t i = 0; i < num_keyframes; ++i) {
+        auto &keyframe = channel.keyframes[i];
 
-    while (auto command_type = ReadCommandType(block_reader)) {
-        switch (*command_type) {
-        case act::CommandType::eAnimChannelSetProp:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            property = AssertReadEnum<AnimationPropertyType>(block_reader, ParseAnimPropertyType);
+        keyframe.time = AssertRead<f32>(reader);
+        keyframe.value.x = AssertRead<f32>(reader);
+        keyframe.value.y = AssertRead<f32>(reader);
+        keyframe.value.z = AssertRead<f32>(reader);
+        keyframe.value.w = AssertRead<f32>(reader);
+    }
+}
+
+template <ActNodeProperty Property>
+auto ReadKeyframesHermite(std::span<const u8> buffer, ActAnimationChannel<Property> &channel) -> void {
+    constexpr auto dimensions = GlmNumComponents<typename ActAnimationChannel<Property>::Traits::DataType>::value;
+    const auto num_values_per_keyframe = 1 + 3 * dimensions;
+    const auto num_keyframes = buffer.size_bytes() / sizeof(f32) / num_values_per_keyframe;
+
+    util::bytes::BinaryReader reader{buffer};
+    channel.keyframes.resize(num_keyframes);
+
+    for (uint32_t i = 0; i < num_keyframes; ++i) {
+        auto &keyframe = channel.keyframes[i];
+
+        keyframe.time = AssertRead<f32>(reader);
+        keyframe.value = AssertReadVector<f32, dimensions>(reader);
+        keyframe.in_dy = AssertReadVector<f32, dimensions>(reader);
+        keyframe.out_dy = AssertReadVector<f32, dimensions>(reader);
+    }
+}
+
+template <>
+auto ReadKeyframesHermite<ActNodeProperty::eRotation>(
+    std::span<const u8> buffer, ActAnimationChannel<ActNodeProperty::eRotation> &channel) -> void {
+    const auto num_values_per_keyframe = 13;
+    const auto num_keyframes = buffer.size_bytes() / sizeof(f32) / num_values_per_keyframe;
+
+    util::bytes::BinaryReader reader{buffer};
+    channel.keyframes.resize(num_keyframes);
+
+    for (uint32_t i = 0; i < num_keyframes; ++i) {
+        auto &keyframe = channel.keyframes[i];
+
+        keyframe.time = AssertRead<f32>(reader);
+        keyframe.value.x = AssertRead<f32>(reader);
+        keyframe.value.y = AssertRead<f32>(reader);
+        keyframe.value.z = AssertRead<f32>(reader);
+        keyframe.value.w = AssertRead<f32>(reader);
+        keyframe.in_dy.x = AssertRead<f32>(reader);
+        keyframe.in_dy.y = AssertRead<f32>(reader);
+        keyframe.in_dy.z = AssertRead<f32>(reader);
+        keyframe.in_dy.w = AssertRead<f32>(reader);
+        keyframe.out_dy.x = AssertRead<f32>(reader);
+        keyframe.out_dy.y = AssertRead<f32>(reader);
+        keyframe.out_dy.z = AssertRead<f32>(reader);
+        keyframe.out_dy.w = AssertRead<f32>(reader);
+    }
+}
+
+auto ReadAnimChannelBlock(std::span<const u8> buffer) -> ActAnyAnimationChannel {
+    util::bytes::BinaryReader reader{buffer};
+
+    std::optional<u32> target_node = std::nullopt;
+    std::optional<ActNodeProperty> target_prop = std::nullopt;
+    std::optional<ActInterpolationMode> interpolation = std::nullopt;
+    std::optional<std::string_view> name = std::nullopt;
+    std::optional<std::span<const u8>> keyframes_buffer = std::nullopt;
+
+    while (const auto command = ReadCommandType(reader)) {
+        switch (*command) {
+        case ActCommandType::eAnimChannelSetNode:
+            target_node = ReadCommandParameter<u32>(reader);
             break;
 
-        case act::CommandType::eAnimChannelSetMode:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            mode = AssertReadEnum<AnimationInterpolationMode>(block_reader, ParseAnimInterpolationMode);
+        case ActCommandType::eAnimChannelSetProp:
+            target_prop = ReadCommandParameterEnum<ActNodeProperty>(reader, ValueToActNodeProperty);
             break;
 
-        case act::CommandType::eAnimChannelSetNode:
-            AssertSizedProperty(block_reader, sizeof(u32));
-            node = AssertRead<u32>(block_reader);
+        case ActCommandType::eAnimChannelSetMode:
+            interpolation = ReadCommandParameterEnum<ActInterpolationMode>(reader, ValueToActInterpolationMode);
             break;
 
-        case act::CommandType::eAnimChannelSetKeyframes: {
-            keyframe_buffer = ReadSizedBuffer(block_reader);
+        case ActCommandType::eAnimChannelSetName:
+            name = ReadCommandParameterString(reader);
             break;
-        }
 
-        case act::CommandType::eAnimChannelSetTimeline: {
-            u32 num_keyframes;
-            num_keyframes = AssertRead<u32>(block_reader);
-
-            num_keyframes = num_keyframes / sizeof(f32);
-            timeline.reserve(num_keyframes);
-            f32 time;
-
-            for (auto i = 0u; i < num_keyframes; ++i) {
-                time = AssertRead<f32>(block_reader);
-                timeline.emplace_back(time);
-            }
-
+        case ActCommandType::eAnimChannelSetKeyframes:
+            keyframes_buffer = ReadCommandParameterBuffer(reader);
             break;
-        }
 
         default:
-            throw ActParseError{
-                fmt::format("act: invalid animation channel command type {}", static_cast<uint32_t>(*command_type))};
+            throw std::runtime_error{
+                fmt::format("invalid animation channel command {:#010x}", static_cast<u32>(*command))};
         }
     }
 
-    if (!node.has_value()) {
-        throw ActParseError{fmt::format("act: animation channel requires a node id")};
+    if (!target_node.has_value() || !target_prop.has_value() || !interpolation.has_value() ||
+        !keyframes_buffer.has_value()) {
+        throw std::runtime_error{"animation channel is not complete"};
     }
 
-    switch (property) {
-    case act::AnimationPropertyType::eTranslation: {
-        auto keyframes = ParseKeyframeData<act::AnimationPropertyType::eTranslation>(keyframe_buffer, timeline);
+    std::string resolved_name = name.has_value() ? std::string{name.value()} : "";
 
-        Model::AnimationChannel<AnimationPropertyType::eTranslation> channel;
-        channel.node_id = node.value();
-        channel.interpolation = mode;
-        channel.keyframes = std::move(keyframes);
+    switch (target_prop.value()) {
+    case ActNodeProperty::eTranslation: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eTranslation>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
+
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
 
         return channel;
     }
+    case ActNodeProperty::eRotation: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eRotation>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
 
-    case act::AnimationPropertyType::eRotation: {
-        auto keyframes = ParseKeyframeData<act::AnimationPropertyType::eRotation>(keyframe_buffer, timeline);
-
-        Model::AnimationChannel<AnimationPropertyType::eRotation> channel;
-        channel.node_id = node.value();
-        channel.interpolation = mode;
-        channel.keyframes = std::move(keyframes);
-
-        return channel;
-    }
-
-    case act::AnimationPropertyType::eScale: {
-        auto keyframes = ParseKeyframeData<act::AnimationPropertyType::eScale>(keyframe_buffer, timeline);
-
-        Model::AnimationChannel<AnimationPropertyType::eScale> channel;
-        channel.node_id = node.value();
-        channel.interpolation = mode;
-        channel.keyframes = std::move(keyframes);
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
 
         return channel;
     }
+    case ActNodeProperty::eScale: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eScale>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
 
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
+
+        return channel;
+    }
+    case ActNodeProperty::eUvOffset: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eUvOffset>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
+
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
+
+        return channel;
+    }
+    case ActNodeProperty::eUvScale: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eUvScale>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
+
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
+
+        return channel;
+    }
+    case ActNodeProperty::eAlpha: {
+        auto channel = ActAnimationChannel<ActNodeProperty::eAlpha>{
+            .node_id = target_node.value(),
+            .interpolation = interpolation.value(),
+            .name = resolved_name,
+        };
+
+        if (interpolation == ActInterpolationMode::eHermite) {
+            ReadKeyframesHermite(keyframes_buffer.value(), channel);
+        } else {
+            ReadKeyframes(keyframes_buffer.value(), channel);
+        }
+
+        return channel;
+    }
     default:
         break;
     }
-
-    throw ActParseError{"invalid animation channel block"};
 }
 
-auto LoadFromBinary(std::span<const u8> binary) -> Model {
-    Model model;
-    BinaryReader reader{binary};
+auto LoadFromBinary(std::span<const u8> buffer) -> ActModel {
+    ActModel model;
+    util::bytes::BinaryReader reader{buffer};
 
-    u32 magic, software_version, writer_version;
-    magic = AssertRead<u32>(reader);
-    software_version = AssertRead<u32>(reader);
-    writer_version = AssertRead<u32>(reader);
+    const auto magic = AssertRead<u32>(reader);
+    const auto version = AssertRead<u32>(reader);
+    const auto writer = AssertRead<u32>(reader);
+    const auto size = AssertRead<u32>(reader);
 
     if (kMagicNumber != magic) {
-        throw ActParseError{fmt::format("act: magic number mismatch")};
+        throw std::runtime_error{"invalid magic number"};
     }
 
-    if (kWriterSoftware != software_version || kWriterVersion != writer_version) {
-        throw ActParseError{fmt::format("act: format version mismatch")};
+    if (kWriterVersion != version || kWriterSoftware != writer) {
+        throw std::runtime_error{"invalid format revision"};
     }
 
-    u32 model_size;
-    model_size = AssertRead<u32>(reader);
-
-    if (reader.Remaining() < model_size) {
-        throw ActParseError{fmt::format("act: expected remaining {} bytes, got {}", model_size, reader.Remaining())};
+    if (reader.Remaining() < size) {
+        throw std::runtime_error{fmt::format("expected remaining {} bytes, got {}", size, reader.Remaining())};
     }
 
     const auto start_position = reader.Position();
-    const auto end_position = start_position + model_size;
+    const auto end_position = start_position + size;
+
     while (reader.Position() < end_position) {
         const auto block_position = reader.Position();
-
-        u32 block_type, block_size;
-        block_type = AssertRead<u32>(reader);
-        block_size = AssertRead<u32>(reader);
+        const auto block_type = AssertRead<u32>(reader);
+        const auto block_size = AssertRead<u32>(reader);
 
         if (reader.Position() + block_size > end_position) {
-            throw ActParseError{fmt::format("act: invalid block of size {} at {}", block_size, block_position)};
+            throw std::runtime_error{fmt::format("act: invalid block of size {} at {}", block_size, block_position)};
         }
 
-        const auto block_type_enum = ParseBlockType(block_type);
+        const auto block_type_enum = ValueToActBlockType(block_type);
         if (!block_type_enum.has_value()) {
-            throw ActParseError{fmt::format("act: invalid block type {} of block at {}", block_type, block_position)};
+            throw std::runtime_error{
+                fmt::format("act: invalid block type {} of block at {}", block_type, block_position)};
         }
 
         const auto block_buffer = reader.ReadBuffer(block_size);
         if (!block_buffer.has_value()) {
-            throw ActParseError{
+            throw std::runtime_error{
                 fmt::format("act: invalid block, expected {} readable bytes in the stream", block_size)};
         }
 
         switch (block_type_enum.value()) {
-        case act::BlockType::eImageBlock:
-            model.images.emplace_back(ParseImageBlock(block_buffer.value()));
+        case act::ActBlockType::eImageBlock:
+            model.images.emplace_back(ReadImageBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eTextureBlock:
-            model.textures.emplace_back(ParseTextureBlock(block_buffer.value()));
+        case act::ActBlockType::eTextureBlock:
+            model.textures.emplace_back(ReadTextureBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eMaterialBlock:
-            model.materials.emplace_back(ParseMaterialBlock(block_buffer.value()));
+        case act::ActBlockType::eMaterialBlock:
+            model.materials.emplace_back(ReadMaterialBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eNodeBlock:
-            model.nodes.emplace_back(ParseNodeBlock(block_buffer.value()));
+        case act::ActBlockType::eNodeBlock:
+            model.nodes.emplace_back(ReadNodeBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eMeshBlock:
-            model.meshes.emplace_back(ParseMeshBlock(block_buffer.value()));
+        case act::ActBlockType::eMeshBlock:
+            model.meshes.emplace_back(ReadMeshBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eSubmeshBlock:
-            model.submeshes.emplace_back(ParseSubmeshBlock(block_buffer.value()));
+        case act::ActBlockType::eSubmeshBlock:
+            model.submeshes.emplace_back(ReadSubmeshBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eSkinBlock:
-            model.skins.emplace_back(ParseSkinBlock(block_buffer.value()));
+        case act::ActBlockType::eSkinBlock:
+            model.skins.emplace_back(ReadSkinBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eSkinNodeBlock:
-            model.skin_nodes.emplace_back(ParseSkinNodeBlock(block_buffer.value()));
+        case act::ActBlockType::eSkinNodeBlock:
+            model.skin_nodes.emplace_back(ReadSkinNodeBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eAnimationBlock:
-            model.animations.emplace_back(ParseAnimationBlock(block_buffer.value()));
+        case act::ActBlockType::eAnimationBlock:
+            model.animations.emplace_back(ReadAnimationBlock(block_buffer.value()));
             break;
 
-        case act::BlockType::eAnimChannelBlock:
-            model.animation_channels.emplace_back(ParseAnimChannelBlock(block_buffer.value()));
+        case act::ActBlockType::eAnimChannelBlock:
+            model.animation_channels.emplace_back(ReadAnimChannelBlock(block_buffer.value()));
             break;
 
         default:
-            // LogWarning("act: skipping block of type {}, size {} bytes", block_type, block_size);
             break;
         }
     }

@@ -154,21 +154,7 @@ auto Model::Pose::RecomputeTransformSubtree(NodeId root) -> void {
 Model::Pose::~Pose() noexcept {}
 
 Model::Model(hal::IDevice *device) : device_{device} {
-    nodes_.emplace_back(
-        Node{
-            this,
-            NodeId{0ul},
-            "(root)",
-            std::nullopt,
-            /* translation = */ glm::fvec3{0.0f, 0.0f, 0.0f},
-            /* scale       = */ glm::fvec3{1.0f, 1.0f, 1.0f},
-            /* rotation    = */ glm::fquat{1.0f, 0.0f, 0.0f, 0.0f},
-            /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
-            /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
-            /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
-            /* alpha       = */ glm::fvec1{1.0f},
-            /* draw_sort   = */ 0,
-        });
+    nodes_.emplace_back(Node{this, NodeId{0ul}, "(root)", std::nullopt, Node::Description{}});
 }
 
 auto Model::CreatePose() const -> std::unique_ptr<Pose> { return Pose::FromModel(*this); }
@@ -227,27 +213,23 @@ auto Model::AddMaterial(const Material::Description &desc) -> std::optional<Mate
 }
 
 auto Model::AddNode(NodeId parent, std::string_view name, uint32_t draw_sort) -> std::optional<NodeId> {
+    Node::Description description = {
+        .draw_sort = draw_sort,
+    };
+
+    return AddNode(parent, name, description);
+}
+
+auto Model::AddNode(NodeId parent, std::string_view name, const Node::Description &description)
+    -> std::optional<NodeId> {
     auto node = GetNode(parent);
     if (!node) {
         return std::nullopt;
     }
 
     NodeId id{static_cast<uint32_t>(nodes_.size())};
-    nodes_.emplace_back(
-        Node{
-            this,
-            id,
-            name,
-            parent,
-            /* translation = */ glm::fvec3{0.0f, 0.0f, 0.0f},
-            /* scale       = */ glm::fvec3{1.0f, 1.0f, 1.0f},
-            /* rotation    = */ glm::fquat{1.0f, 0.0f, 0.0f, 0.0f},
-            /* color       = */ glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f},
-            /* uv_offset   = */ glm::fvec2{0.0f, 0.0f},
-            /* uv_scale    = */ glm::fvec2{1.0f, 1.0f},
-            /* alpha       = */ glm::fvec1{1.0f},
-            draw_sort,
-        });
+
+    nodes_.emplace_back(Node{this, id, name, parent, description});
 
     node = GetNode(parent);
     node->children_.push_back(id);

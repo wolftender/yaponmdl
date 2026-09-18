@@ -44,20 +44,90 @@ auto MakeErrorBitmap() -> const conv::ITextureRepository::Bitmap {
 
 namespace conv {
 
-inline auto ConvertInterpolation(act::AnimationInterpolationMode mode) -> render::Model::Animation::InterpolationMode {
+inline auto ConvertInterpolation(act::ActInterpolationMode mode) -> render::Model::Animation::InterpolationMode {
     switch (mode) {
-    case act::AnimationInterpolationMode::eStep:
+    case act::ActInterpolationMode::eStep:
         return render::Model::Animation::InterpolationMode::eStep;
-    case act::AnimationInterpolationMode::eLinear:
+    case act::ActInterpolationMode::eLinear:
         return render::Model::Animation::InterpolationMode::eLinear;
-    case act::AnimationInterpolationMode::eCubicSpline:
+    case act::ActInterpolationMode::eCubicSpline:
         return render::Model::Animation::InterpolationMode::eCubic;
+    case act::ActInterpolationMode::eSlerp:
+        return render::Model::Animation::InterpolationMode::eLinear;
+    case act::ActInterpolationMode::eHermite:
+        return render::Model::Animation::InterpolationMode::eHermite;
     default:
         return render::Model::Animation::InterpolationMode::eStep;
     }
 }
 
-auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const IConvertLogger *logger)
+template <act::ActNodeProperty ActProperty> struct ActPropertyToProperty;
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eTranslation> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eTranslation;
+};
+
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eRotation> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eRotation;
+};
+
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eScale> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eScale;
+};
+
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eUvOffset> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eUvOffset;
+};
+
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eUvScale> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eUvScale;
+};
+
+template <> struct ActPropertyToProperty<act::ActNodeProperty::eAlpha> {
+    static constexpr auto Property = render::Model::Animation::NodeTargetProperty::eAlpha;
+};
+
+template <render::Model::Animation::NodeTargetProperty Property, act::ActNodeProperty ActProperty>
+    requires std::is_same_v<
+        typename render::Model::Animation::NodePropertyDataType<Property>::Type,
+        typename act::ActAnimPropertyTraits<ActProperty>::DataType>
+auto ConvertChannel(
+    render::Model::Animation::NodeChannel<Property> &channel, const act::ActAnimationChannel<ActProperty> &act_channel)
+    -> void {
+
+    using KeyframeType = render::Model::Animation::NodeChannel<Property>::KeyframeType;
+
+    channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
+
+    auto &keyframes = channel.GetKeyframes();
+    const auto &act_keyframes = act_channel.keyframes;
+
+    keyframes.reserve(act_keyframes.size());
+
+    switch (act_channel.interpolation) {
+    case act::ActInterpolationMode::eHermite:
+        std::transform(
+            act_keyframes.begin(), act_keyframes.end(), std::back_inserter(keyframes), [&](const auto act_keyframe) {
+            return KeyframeType{
+                .time = act_keyframe.time,
+                .value = act_keyframe.value,
+                .in_dy = act_keyframe.in_dy,
+                .out_dy = act_keyframe.out_dy,
+            };
+        });
+        break;
+    default:
+        std::transform(
+            act_keyframes.begin(), act_keyframes.end(), std::back_inserter(keyframes), [&](const auto act_keyframe) {
+            return KeyframeType{
+                .time = act_keyframe.time,
+                .value = act_keyframe.value,
+            };
+        });
+        break;
+    }
+}
+
+auto ConvertACT(const act::ActModel &act_model, render::hal::IDevice *device, const IConvertLogger *logger)
     -> std::unique_ptr<render::Model> {
     ConvertConsoleLogger console_logger;
     if (!logger) {
@@ -70,17 +140,20 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
     const auto num_textures = act_model.textures.size();
     const auto num_materials = act_model.materials.size();
     const auto num_submeshes = act_model.submeshes.size();
+    const auto num_skins = act_model.skins.size();
 
     using AnyMeshId = std::variant<render::Model::MeshId, render::Model::AnimatedMeshId, std::monostate>;
 
     std::vector<std::optional<render::Model::NodeId>> node_map;
     std::vector<std::optional<render::Model::TextureId>> texture_map;
     std::vector<std::optional<render::Model::MaterialId>> material_map;
+    std::vector<std::optional<render::Model::SkinId>> skin_map;
     std::vector<AnyMeshId> submesh_map;
 
     node_map.resize(num_nodes);
     texture_map.resize(num_textures);
     material_map.resize(num_materials);
+    skin_map.resize(num_skins);
     submesh_map.resize(num_submeshes, std::monostate{});
 
     for (uint32_t act_texture_id = 0; act_texture_id < num_textures; ++act_texture_id) {
@@ -122,6 +195,9 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
             act_material.albedo_map_id.has_value() ? texture_map[act_material.albedo_map_id.value()] : std::nullopt;
         desc.normal =
             act_material.normal_map_id.has_value() ? texture_map[act_material.normal_map_id.value()] : std::nullopt;
+        desc.color = act_material.base_color;
+        desc.uv_offset = act_material.uv_offset;
+        desc.uv_scale = act_material.uv_scale;
 
         auto material_id = model->AddMaterial(desc);
         material_map[act_material_id] = material_id;
@@ -152,17 +228,24 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
             parent_id = node_map[act_parent_id].value();
         }
 
-        const auto node_id = model->AddNode(parent_id, fmt::format("act_node_{}", act_node_id));
+        render::Model::Node::Description node_description = {
+            .translation = act_node.translation,
+            .scale = act_node.scale,
+            .rotation = act_node.rotation,
+            .draw_sort = act_node.draw_order,
+            .bounds =
+                {
+                    .min = glm::fvec3{-3.0f, -10.0f, -3.0f},
+                    .max = glm::fvec3{3.0f, 10.0f, 3.0f},
+                },
+        };
+
+        const auto node_id = model->AddNode(parent_id, act_node.name, node_description);
         if (!node_id.has_value()) {
             throw std::runtime_error{"failed to allocate node"};
         }
 
         node_map[act_node_id] = node_id;
-        auto node = model->GetNode(node_id.value());
-
-        node->SetTranslation(act_node.translation);
-        node->SetRotation(act_node.rotation);
-        node->SetScale(act_node.scale);
 
         if (act_node.mesh_id.has_value()) {
             nodes_with_meshes.push_back(act_node_id);
@@ -173,6 +256,40 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
         throw std::runtime_error{"act model has invalid topology"};
     }
 
+    for (uint32_t act_skin_id = 0; act_skin_id < num_skins; ++act_skin_id) {
+        const auto &act_skin = act_model.skins[act_skin_id];
+
+        render::Model::Skin skin;
+        for (const auto &act_skin_node_id : act_skin.skin_node_ids) {
+            const auto &act_skin_node = act_model.skin_nodes[act_skin_node_id];
+            if (!node_map[act_skin_node.node_id].has_value()) {
+                throw std::runtime_error{fmt::format("skin references invalid node id {}", act_skin_node.node_id)};
+            }
+
+            skin.AddNodeRef(node_map[act_skin_node.node_id].value(), act_skin_node.inverse_bind_matrix);
+        }
+
+        auto skin_id = model->AddSkin(std::move(skin));
+        skin_map[act_skin_id] = skin_id;
+    }
+
+    for (uint32_t act_skin_id = 0; act_skin_id < num_skins; ++act_skin_id) {
+        const auto &act_skin = act_model.skins[act_skin_id];
+
+        render::Model::Skin skin;
+        for (const auto &act_skin_node_id : act_skin.skin_node_ids) {
+            const auto &act_skin_node = act_model.skin_nodes[act_skin_node_id];
+            if (!node_map[act_skin_node.node_id].has_value()) {
+                throw std::runtime_error{fmt::format("skin references invalid node id {}", act_skin_node.node_id)};
+            }
+
+            skin.AddNodeRef(node_map[act_skin_node.node_id].value(), act_skin_node.inverse_bind_matrix);
+        }
+
+        auto skin_id = model->AddSkin(std::move(skin));
+        skin_map[act_skin_id] = skin_id;
+    }
+
     for (const auto act_node_id : nodes_with_meshes) {
         const auto &act_node = act_model.nodes[act_node_id];
         const auto &act_mesh = act_model.meshes[act_node.mesh_id.value()];
@@ -180,43 +297,21 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
         auto node_id = node_map[act_node_id];
         auto &node = *model->GetNode(node_id.value());
 
-        std::optional<render::Model::SkinId> skin_id = [&]() -> std::optional<render::Model::SkinId> {
-            if (!act_node.skin_id.has_value()) {
-                return std::nullopt;
-            }
-
-            const auto &act_skin = act_model.skins[act_node.skin_id.value()];
-
-            render::Model::Skin skin;
-            for (const auto &act_skin_node_id : act_skin.skin_node_ids) {
-                const auto &act_skin_node = act_model.skin_nodes[act_skin_node_id];
-                if (!node_map[act_skin_node.node_id].has_value()) {
-                    return std::nullopt;
-                }
-
-                skin.AddNodeRef(node_map[act_skin_node.node_id].value(), act_skin_node.inverse_bind_matrix);
-            }
-
-            return model->AddSkin(std::move(skin));
-        }();
-
         for (const auto act_submesh_id : act_mesh.submesh_ids) {
             const auto &act_any_submesh = act_model.submeshes[act_submesh_id];
             std::visit(
                 overload{
-                    [&](const act::Model::StaticSubmesh &act_submesh) {
+                    [&](const act::ActStaticSubmesh &act_submesh) {
                 std::vector<render::StaticVertex> vertices{act_submesh.vertices.size()};
                 for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
                     vertices[i].position = act_submesh.vertices[i].position;
-                    vertices[i].normal = act_submesh.vertices[i].normal;
-                    vertices[i].tangent = act_submesh.vertices[i].tangent;
                     vertices[i].uv = act_submesh.vertices[i].texcoord;
-                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
+                    vertices[i].color = act_submesh.vertices[i].color;
                 }
 
                 auto material_id = material_map[act_submesh.material];
                 if (!material_id.has_value()) {
-                    logger->Log(fmt::format("model: invalid material for act submesh {}", act_submesh_id));
+                    logger->Log(fmt::format("error: invalid material for act submesh {}", act_submesh_id));
                     return;
                 }
 
@@ -227,8 +322,13 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                     node.AddMesh(mesh_id.value());
                 }
             },
-                    [&](const act::Model::RiggedSubmesh &act_submesh) {
+                    [&](const act::ActSkinnedSubmesh &act_submesh) {
                 // don't add animated submesh if skin is not present
+                const auto skin_id =
+                    act_submesh.skin_id.has_value()
+                        ? skin_map[act_submesh.skin_id.value()]
+                        : (act_node.skin_id.has_value() ? skin_map[act_node.skin_id.value()] : std::nullopt);
+
                 if (!skin_id.has_value()) {
                     return;
                 }
@@ -236,12 +336,10 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
                 std::vector<render::AnimatedVertex> vertices{act_submesh.vertices.size()};
                 for (size_t i = 0; i < act_submesh.vertices.size(); ++i) {
                     vertices[i].position = act_submesh.vertices[i].position;
-                    vertices[i].normal = act_submesh.vertices[i].normal;
-                    vertices[i].tangent = act_submesh.vertices[i].tangent;
                     vertices[i].uv = act_submesh.vertices[i].texcoord;
-                    vertices[i].color = glm::fvec3{1.0f, 1.0f, 1.0f};
+                    vertices[i].color = act_submesh.vertices[i].color;
 
-                    for (uint32_t w = 0; w < 4; ++w) {
+                    for (uint32_t w = 0; w < 8; ++w) {
                         vertices[i].bones[w] = act_submesh.vertices[i].joints[w];
                         vertices[i].weights[w] = act_submesh.vertices[i].weights[w];
                     }
@@ -249,7 +347,7 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
 
                 auto material_id = material_map[act_submesh.material];
                 if (!material_id.has_value()) {
-                    logger->Log(fmt::format("model: invalid material for act submesh {}", act_submesh_id));
+                    logger->Log(fmt::format("error: invalid material for act submesh {}", act_submesh_id));
                     return;
                 }
 
@@ -266,78 +364,26 @@ auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const
         }
     }
 
-    using NodeTargetProperty = render::Model::Animation::NodeTargetProperty;
-
     // loading animations
     for (uint32_t act_anim_id = 0; act_anim_id < act_model.animations.size(); ++act_anim_id) {
         const auto &act_anim = act_model.animations[act_anim_id];
 
-        render::Model::Animation animation{fmt::format("act_anim_{}", act_anim_id)};
+        render::Model::Animation animation{
+            act_anim.name.empty() ? fmt::format("act_anim_{}", act_anim_id) : act_anim.name};
+
         for (const auto act_channel_id : act_anim.channel_ids) {
             const auto &act_channel = act_model.animation_channels[act_channel_id];
-            std::visit(
-                overload{
-                    [&](const act::Model::TranslationAnimationChannel &act_channel) {
-                if (!node_map[act_channel.node_id].has_value()) {
-                    return;
-                }
-
-                const auto node_id = node_map[act_channel.node_id].value();
-
-                animation.AppendNodeChannel<NodeTargetProperty::eTranslation>(node_id, [&](auto &translation_channel) {
-                    translation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
-
-                    for (const auto &act_keyframe : act_channel.keyframes) {
-                        translation_channel.GetKeyframes().emplace_back(
-                            render::Model::Animation::NodeTranslationChannel::KeyframeType{
-                                .value = act_keyframe.value,
-                                .time = act_keyframe.time,
-                            });
-                    }
+            std::visit([&](const auto &typed_act_channel) -> void {
+                const auto node_id = node_map[typed_act_channel.node_id].value();
+                constexpr auto Property = ActPropertyToProperty<
+                    std::remove_reference<decltype(typed_act_channel)>::type::ActProperty>::Property;
+                animation.AppendNodeChannel<Property>(node_id, [&](auto &mut_model_channel) -> void {
+                    ConvertChannel(mut_model_channel, typed_act_channel);
                 });
-            },
-                    [&](const act::Model::RotationAnimationChannel &act_channel) {
-                if (!node_map[act_channel.node_id].has_value()) {
-                    return;
-                }
-
-                const auto node_id = node_map[act_channel.node_id].value();
-
-                animation.AppendNodeChannel<NodeTargetProperty::eRotation>(node_id, [&](auto &rotation_channel) {
-                    rotation_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
-
-                    for (const auto &act_keyframe : act_channel.keyframes) {
-                        rotation_channel.GetKeyframes().emplace_back(
-                            render::Model::Animation::NodeRotationChannel::KeyframeType{
-                                .value = act_keyframe.value,
-                                .time = act_keyframe.time,
-                            });
-                    }
-                });
-            },
-                    [&](const act::Model::ScaleAnimationChannel &act_channel) {
-                if (!node_map[act_channel.node_id].has_value()) {
-                    return;
-                }
-
-                const auto node_id = node_map[act_channel.node_id].value();
-
-                animation.AppendNodeChannel<NodeTargetProperty::eScale>(node_id, [&](auto &scale_channel) {
-                    scale_channel.SetInterpolation(ConvertInterpolation(act_channel.interpolation));
-
-                    for (const auto &act_keyframe : act_channel.keyframes) {
-                        scale_channel.GetKeyframes().emplace_back(
-                            render::Model::Animation::NodeScaleChannel::KeyframeType{
-                                .value = act_keyframe.value,
-                                .time = act_keyframe.time,
-                            });
-                    }
-                });
-            },
-                },
-                act_channel);
+            }, act_channel);
         }
 
+        animation.SetDuration(act_anim.frame_loop.y);
         model->AddAnimation(std::move(animation));
     }
 

@@ -42,7 +42,7 @@ auto ConvertGMO(
     const gmo::GmoModel &gmo_model, render::hal::IDevice *device, const ITextureRepository *repository = nullptr,
     const IConvertLogger *logger = nullptr) -> std::unique_ptr<render::Model>;
 
-auto ConvertACT(const act::Model &act_model, render::hal::IDevice *device, const IConvertLogger *logger = nullptr)
+auto ConvertACT(const act::ActModel &act_model, render::hal::IDevice *device, const IConvertLogger *logger = nullptr)
     -> std::unique_ptr<render::Model>;
 
 } // namespace conv

@@ -151,6 +151,21 @@ public:
 
     class Node final {
     public:
+        struct Description final {
+            glm::fvec3 translation = glm::fvec3{0.0f, 0.0f, 0.0f};
+            glm::fvec3 scale = glm::fvec3{1.0f, 1.0f, 1.0f};
+            glm::fquat rotation = glm::fquat{1.0f, 0.0f, 0.0f, 0.0f};
+
+            glm::fvec4 color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+            glm::fvec2 uv_offset = glm::fvec2{0.0f, 0.0f};
+            glm::fvec2 uv_scale = glm::fvec2{1.0f, 1.0f};
+
+            glm::fvec1 alpha = glm::fvec1{1.0f};
+            uint32_t draw_sort = 0;
+
+            Bounds bounds = {};
+        };
+
         Node(const Node &) = delete;
         auto operator=(const Node &) = delete;
 
@@ -159,6 +174,7 @@ public:
 
         auto GetModel() const -> const Model & { return *model_; }
         auto GetSelf() const -> NodeId { return self_; }
+        auto GetName() const -> const std::string & { return name_; }
         auto GetParent() const -> const std::optional<NodeId> { return parent_; }
         auto GetTranslation() const -> const glm::fvec3 & { return translation_; }
         auto GetScale() const -> const glm::fvec3 & { return scale_; }
@@ -171,10 +187,12 @@ public:
         auto GetUvScale() const -> const glm::fvec2 & { return uv_scale_; }
         auto GetAlpha() const -> const glm::fvec1 & { return alpha_; }
         auto GetDrawSort() const -> uint32_t { return draw_sort_; }
+        auto GetBounds() const -> const Bounds & { return bounds_; }
 
         auto SetTranslation(const glm::fvec3 &translation) -> void { translation_ = translation; }
         auto SetScale(const glm::fvec3 &scale) -> void { scale_ = scale; }
         auto SetRotation(const glm::fquat &rotation) -> void { rotation_ = rotation; }
+        auto SetBounds(const Bounds &bounds) -> void { bounds_ = bounds; }
 
         auto AddMesh(MeshId id) -> void;
         auto AddAnimMesh(AnimatedMeshId id) -> void;
@@ -182,11 +200,11 @@ public:
     private:
         Node(
             Model *model, NodeId self, std::string_view name, std::optional<NodeId> parent,
-            const glm::fvec3 &translation, const glm::fvec3 &scale, const glm::fquat &rotation, const glm::fvec4 &color,
-            const glm::fvec2 &uv_offset, const glm::fvec2 &uv_scale, const glm::fvec1 &alpha, uint32_t draw_sort)
-            : model_{model}, self_{self}, name_{name}, parent_{parent}, translation_{translation}, scale_{scale},
-              rotation_{rotation}, color_{color}, uv_offset_{uv_offset}, uv_scale_{uv_scale}, alpha_{alpha},
-              draw_sort_{draw_sort} {}
+            const Description &description)
+            : model_{model}, self_{self}, name_{name}, parent_{parent}, translation_{description.translation},
+              scale_{description.scale}, rotation_{description.rotation}, color_{description.color},
+              uv_offset_{description.uv_offset}, uv_scale_{description.uv_scale}, alpha_{description.alpha},
+              draw_sort_{description.draw_sort}, bounds_{description.bounds} {}
 
         Model *model_ = nullptr;
         NodeId self_;
@@ -208,6 +226,7 @@ public:
         glm::fvec1 alpha_;
 
         uint32_t draw_sort_;
+        Bounds bounds_;
 
         friend class Model;
     };
@@ -619,6 +638,7 @@ public:
 
     auto AddMaterial(const Material::Description &desc) -> std::optional<MaterialId>;
     auto AddNode(NodeId parent, std::string_view name, uint32_t draw_sort = 0) -> std::optional<NodeId>;
+    auto AddNode(NodeId parent, std::string_view name, const Node::Description &description) -> std::optional<NodeId>;
     auto AddAnimation(Animation &&animation) -> std::optional<AnimationId>;
 
     auto GetMesh(MeshId handle) -> Mesh *;
