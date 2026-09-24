@@ -254,8 +254,9 @@ auto ConvertGXX(
 
             const auto mesh_id =
                 gxx_mesh.primitive_type == gxx::eGxxPrimitiveTriangles
-                    ? model->AddMesh(vertices, gxx_mesh.indices, material)
-                    : model->AddMesh(vertices, ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material);
+                    ? model->AddMesh(std::move(vertices), std::vector{gxx_mesh.indices}, material)
+                    : model->AddMesh(
+                          std::move(vertices), ConvertIndicesGXX(gxx_mesh.indices, gxx_mesh.primitive_type), material);
             if (!mesh_id.has_value()) {
                 throw std::runtime_error{"failed to allocate model mesh"};
             }

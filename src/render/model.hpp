@@ -63,11 +63,21 @@ public:
         auto GetModel() const -> const Model & { return *model_; }
         auto GetHandle() const -> const hal::TextureHandle & { return handle_; }
 
+        auto GetWidth() const -> uint32_t { return width_; }
+        auto GetHeight() const -> uint32_t { return height_; }
+        auto GetRgbaPlane() const -> std::span<const uint8_t> { return plane_; }
+
     private:
-        Texture(Model *model, hal::TextureHandle handle) : model_{model}, handle_{std::move(handle)} {}
+        Texture(
+            Model *model, hal::TextureHandle handle, uint32_t width, uint32_t height, std::vector<uint8_t> &&rgba_plane)
+            : model_{model}, handle_{std::move(handle)}, width_{width}, height_{height}, plane_{rgba_plane} {}
 
         Model *model_ = nullptr;
         hal::TextureHandle handle_;
+
+        uint32_t width_;
+        uint32_t height_;
+        std::vector<uint8_t> plane_;
 
         friend class Model;
     };
@@ -86,15 +96,22 @@ public:
         auto GetHandle() const -> const hal::MeshHandle & { return handle_; }
         auto GetMaterial() const -> MaterialId { return material_; }
         auto GetBounds() const -> const Bounds & { return bounds_; }
+        auto GetVertices() const -> std::span<const StaticVertex> { return vertices_; }
+        auto GetIndices() const -> std::span<const uint32_t> { return indices_; }
 
     private:
-        Mesh(Model *model, hal::MeshHandle handle, MaterialId material, const Bounds &bounds)
-            : model_{model}, handle_{std::move(handle)}, material_{material}, bounds_{bounds} {}
+        Mesh(
+            Model *model, hal::MeshHandle handle, MaterialId material, const Bounds &bounds,
+            std::vector<AnimatedVertex> vertices, std::vector<uint32_t> indices)
+            : model_{model}, handle_{std::move(handle)}, material_{material}, bounds_{bounds},
+              vertices_{std::move(vertices)}, indices_{std::move(indices)} {}
 
         Model *model_ = nullptr;
         hal::MeshHandle handle_;
         MaterialId material_;
         Bounds bounds_;
+        std::vector<StaticVertex> vertices_;
+        std::vector<uint32_t> indices_;
 
         friend class Model;
     };
@@ -135,16 +152,23 @@ public:
         auto GetMaterial() const -> MaterialId { return material_; }
         auto GetSkin() const -> SkinId { return skin_; }
         auto GetBounds() const -> const Bounds & { return bounds_; }
+        auto GetVertices() const -> std::span<const AnimatedVertex> { return vertices_; }
+        auto GetIndices() const -> std::span<const uint32_t> { return indices_; }
 
     private:
-        AnimatedMesh(Model *model, hal::AnimMeshHandle handle, MaterialId material, SkinId skin, const Bounds &bounds)
-            : model_{model}, handle_{std::move(handle)}, material_{material}, skin_{std::move(skin)}, bounds_{bounds} {}
+        AnimatedMesh(
+            Model *model, hal::AnimMeshHandle handle, MaterialId material, SkinId skin, const Bounds &bounds,
+            std::vector<AnimatedVertex> vertices, std::vector<uint32_t> indices)
+            : model_{model}, handle_{std::move(handle)}, material_{material}, skin_{std::move(skin)}, bounds_{bounds},
+              vertices_{std::move(vertices)}, indices_{std::move(indices)} {}
 
         Model *model_ = nullptr;
         hal::AnimMeshHandle handle_;
         MaterialId material_;
         SkinId skin_;
         Bounds bounds_;
+        std::vector<AnimatedVertex> vertices_;
+        std::vector<uint32_t> indices_;
 
         friend class Model;
     };
@@ -605,34 +629,19 @@ public:
     auto GetRoot() const -> NodeId { return NodeId{0ul}; }
 
     auto AddMesh(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices, MaterialId material)
-        -> std::optional<MeshId> {
-        const auto vtx_ptr = std::ranges::data(vertices);
-        const auto idx_ptr = std::ranges::data(indices);
-
-        const auto vtx_len = std::ranges::size(vertices);
-        const auto idx_len = std::ranges::size(indices);
-
-        return AddMeshImpl({vtx_ptr, vtx_len}, {idx_ptr, idx_len}, material);
-    }
+        -> std::optional<MeshId>;
+    auto AddMesh(std::vector<StaticVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material)
+        -> std::optional<MeshId>;
 
     auto AddAnimatedMesh(
         std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices, MaterialId material, SkinId skin)
-        -> std::optional<AnimatedMeshId> {
-        const auto vtx_ptr = std::ranges::data(vertices);
-        const auto idx_ptr = std::ranges::data(indices);
+        -> std::optional<AnimatedMeshId>;
+    auto AddAnimatedMesh(
+        std::vector<AnimatedVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material, SkinId skin)
+        -> std::optional<AnimatedMeshId>;
 
-        const auto vtx_len = std::ranges::size(vertices);
-        const auto idx_len = std::ranges::size(indices);
-
-        return AddAnimMeshImpl({vtx_ptr, vtx_len}, {idx_ptr, idx_len}, material, skin);
-    }
-
-    auto AddRgbaTexture(uint32_t width, uint32_t height, std::span<const uint8_t> range) -> std::optional<TextureId> {
-        const auto data_ptr = std::ranges::data(range);
-        const auto data_len = std::ranges::size(range);
-
-        return AddRgbaTextureImpl(width, height, {data_ptr, data_len});
-    }
+    auto AddRgbaTexture(uint32_t width, uint32_t height, std::span<const uint8_t> range) -> std::optional<TextureId>;
+    auto AddRgbaTexture(uint32_t width, uint32_t height, std::vector<uint8_t> &&range) -> std::optional<TextureId>;
 
     auto AddSkin(Skin &&skin) -> std::optional<SkinId>;
 
@@ -741,12 +750,12 @@ public:
     auto CreateController(AnimationId animation) -> Controller;
 
 private:
-    auto AddMeshImpl(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices, MaterialId material)
+    auto AddMeshImpl(std::vector<StaticVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material)
         -> std::optional<MeshId>;
     auto AddAnimMeshImpl(
-        std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices, MaterialId material, SkinId skin)
+        std::vector<AnimatedVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material, SkinId skin)
         -> std::optional<AnimatedMeshId>;
-    auto AddRgbaTextureImpl(uint32_t width, uint32_t height, std::span<const uint8_t> data) -> std::optional<TextureId>;
+    auto AddRgbaTextureImpl(uint32_t width, uint32_t height, std::vector<uint8_t> &&data) -> std::optional<TextureId>;
     auto MarkAsMeshNode(NodeId node) -> void;
 
     hal::IDevice *device_;

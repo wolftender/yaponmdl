@@ -108,8 +108,8 @@ auto ConvertChannel(
         std::transform(
             act_keyframes.begin(), act_keyframes.end(), std::back_inserter(keyframes), [&](const auto act_keyframe) {
             return KeyframeType{
-                .time = act_keyframe.time,
                 .value = act_keyframe.value,
+                .time = act_keyframe.time,
                 .in_dy = act_keyframe.in_dy,
                 .out_dy = act_keyframe.out_dy,
             };
@@ -119,8 +119,8 @@ auto ConvertChannel(
         std::transform(
             act_keyframes.begin(), act_keyframes.end(), std::back_inserter(keyframes), [&](const auto act_keyframe) {
             return KeyframeType{
-                .time = act_keyframe.time,
                 .value = act_keyframe.value,
+                .time = act_keyframe.time,
             };
         });
         break;
@@ -174,8 +174,8 @@ auto ConvertACT(const act::ActModel &act_model, render::hal::IDevice *device, co
             ::memcpy(bitmap_buffer.data(), img, width * height * 4 * sizeof(uint8_t));
             stbi_image_free(img);
 
-            auto texture_id =
-                model->AddRgbaTexture(static_cast<uint32_t>(width), static_cast<uint32_t>(height), bitmap_buffer);
+            auto texture_id = model->AddRgbaTexture(
+                static_cast<uint32_t>(width), static_cast<uint32_t>(height), std::move(bitmap_buffer));
             texture_map[act_texture_id] = texture_id;
         } else {
             logger->Log(fmt::format("act image {} is invalid", act_texture.image_id));
@@ -315,7 +315,8 @@ auto ConvertACT(const act::ActModel &act_model, render::hal::IDevice *device, co
                     return;
                 }
 
-                auto mesh_id = model->AddMesh(vertices, act_submesh.indices, material_id.value());
+                auto mesh_id =
+                    model->AddMesh(std::move(vertices), std::vector{act_submesh.indices}, material_id.value());
                 submesh_map[act_submesh_id] = mesh_id.has_value() ? AnyMeshId{mesh_id.value()} : std::monostate{};
 
                 if (mesh_id.has_value()) {
@@ -351,8 +352,8 @@ auto ConvertACT(const act::ActModel &act_model, render::hal::IDevice *device, co
                     return;
                 }
 
-                auto mesh_id =
-                    model->AddAnimatedMesh(vertices, act_submesh.indices, material_id.value(), skin_id.value());
+                auto mesh_id = model->AddAnimatedMesh(
+                    std::move(vertices), std::vector{act_submesh.indices}, material_id.value(), skin_id.value());
                 submesh_map[act_submesh_id] = mesh_id.has_value() ? AnyMeshId{mesh_id.value()} : std::monostate{};
 
                 if (mesh_id.has_value()) {

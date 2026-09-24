@@ -356,7 +356,8 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id = model->AddMesh(vertices, ConvertIndicesGMO(gmo_draw_array), material_id.value());
+        const auto mesh_id =
+            model->AddMesh(std::move(vertices), ConvertIndicesGMO(gmo_draw_array), material_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }
@@ -406,8 +407,8 @@ auto ConvertGMO(
             throw std::runtime_error{"invalid material was referenced in the gmo model"};
         }
 
-        const auto mesh_id =
-            model->AddAnimatedMesh(vertices, ConvertIndicesGMO(gmo_draw_array), material_id.value(), skin_id.value());
+        const auto mesh_id = model->AddAnimatedMesh(
+            std::move(vertices), ConvertIndicesGMO(gmo_draw_array), material_id.value(), skin_id.value());
         if (!mesh_id.has_value()) {
             throw std::runtime_error{"failed to allocate mesh"};
         }

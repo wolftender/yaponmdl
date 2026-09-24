@@ -159,25 +159,79 @@ Model::Model(hal::IDevice *device) : device_{device} {
 
 auto Model::CreatePose() const -> std::unique_ptr<Pose> { return Pose::FromModel(*this); }
 
-auto Model::AddMeshImpl(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices, MaterialId material)
+auto Model::AddMesh(std::span<const StaticVertex> vertices, std::span<const uint32_t> indices, MaterialId material)
+    -> std::optional<MeshId> {
+    return AddMeshImpl(
+        std::vector<StaticVertex>{vertices.begin(), vertices.end()},
+        std::vector<uint32_t>{indices.begin(), indices.end()}, material);
+}
+
+auto Model::AddMesh(std::vector<StaticVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material)
+    -> std::optional<MeshId> {
+    return AddMeshImpl(std::move(vertices), std::move(indices), material);
+}
+
+auto Model::AddAnimatedMesh(
+    std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices, MaterialId material, SkinId skin)
+    -> std::optional<AnimatedMeshId> {
+
+    return AddAnimMeshImpl(
+        std::vector<StaticVertex>{vertices.begin(), vertices.end()},
+        std::vector<uint32_t>{indices.begin(), indices.end()}, material, skin);
+}
+
+auto Model::AddAnimatedMesh(
+    std::vector<AnimatedVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material, SkinId skin)
+    -> std::optional<AnimatedMeshId> {
+    return AddAnimMeshImpl(std::move(vertices), std::move(indices), material, skin);
+}
+
+auto Model::AddRgbaTexture(uint32_t width, uint32_t height, std::span<const uint8_t> range)
+    -> std::optional<TextureId> {
+    return AddRgbaTextureImpl(width, height, std::vector<uint8_t>{range.begin(), range.end()});
+}
+
+auto Model::AddRgbaTexture(uint32_t width, uint32_t height, std::vector<uint8_t> &&range) -> std::optional<TextureId> {
+    return AddRgbaTextureImpl(width, height, std::move(range));
+}
+
+auto Model::AddMeshImpl(std::vector<StaticVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material)
     -> std::optional<MeshId> {
     auto mesh = device_->CreateMesh(vertices, indices);
 
-    meshes_.emplace_back(Mesh{this, std::move(mesh), material, CalculateIndexedBounds(vertices, indices)});
+    meshes_.emplace_back(
+        Mesh{
+            this,
+            std::move(mesh),
+            material,
+            CalculateIndexedBounds(std::span<const StaticVertex>{vertices}, std::span<const uint32_t>{indices}),
+            std::move(vertices),
+            std::move(indices),
+        });
+
     return MeshId{static_cast<uint32_t>(meshes_.size() - 1)};
 }
 
 auto Model::AddAnimMeshImpl(
-    std::span<const AnimatedVertex> vertices, std::span<const uint32_t> indices, MaterialId material, SkinId skin)
+    std::vector<AnimatedVertex> &&vertices, std::vector<uint32_t> &&indices, MaterialId material, SkinId skin)
     -> std::optional<AnimatedMeshId> {
     auto mesh = device_->CreateAnimatedMesh(vertices, indices);
 
     animated_meshes_.emplace_back(
-        AnimatedMesh{this, std::move(mesh), material, std::move(skin), CalculateIndexedBounds(vertices, indices)});
+        AnimatedMesh{
+            this,
+            std::move(mesh),
+            material,
+            std::move(skin),
+            CalculateIndexedBounds(std::span<const StaticVertex>{vertices}, std::span<const uint32_t>{indices}),
+            std::move(vertices),
+            std::move(indices),
+        });
+
     return AnimatedMeshId{static_cast<uint32_t>(animated_meshes_.size()) - 1};
 }
 
-auto Model::AddRgbaTextureImpl(uint32_t width, uint32_t height, std::span<const uint8_t> data)
+auto Model::AddRgbaTextureImpl(uint32_t width, uint32_t height, std::vector<uint8_t> &&data)
     -> std::optional<TextureId> {
     hal::TextureDescription desc = {
         .width = width,
@@ -191,7 +245,7 @@ auto Model::AddRgbaTextureImpl(uint32_t width, uint32_t height, std::span<const 
 
     auto texture = device_->CreateRgbaTexture(desc);
 
-    textures_.emplace_back(Texture{this, std::move(texture)});
+    textures_.emplace_back(Texture{this, std::move(texture), width, height, std::move(data)});
     return TextureId{static_cast<uint32_t>(textures_.size() - 1)};
 }
 
