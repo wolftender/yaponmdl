@@ -578,7 +578,12 @@ private:
             // build a drawlist
             GxxDrawlist drawlist;
             drawlist.mesh = ge_state_.mesh;
-            drawlist.albedo_color = ge_state_.albedo_color;
+
+            if (ge_state_.format_color == pspgu::eSceGuFmtColorNONE) {
+                drawlist.albedo_color = ge_state_.albedo_color;
+            } else {
+                drawlist.albedo_color = glm::fvec4{1.0f, 1.0f, 1.0f, 1.0f};
+            }
 
             if (ge_state_.enable_texture_map) {
                 if (ge_state_.texture.has_value()) {
